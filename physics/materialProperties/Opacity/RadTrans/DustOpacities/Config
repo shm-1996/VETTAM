@@ -1,0 +1,27 @@
+#	Configuration file for gray dust opacities in different radiation bands
+
+D total extinction coefficient
+VARIABLE opac
+#Floor opacity returned by the Semenov routine
+PARAMETER opac_floor 		REAL	1.e-5  
+
+D Flag for opacities. Values possible: "Semenov", "Fixed".
+PARAMETER dust_opacity_ir     STRING   "Semenov"
+PARAMETER dust_opacity_fuv    STRING   "Fixed"
+PARAMETER dust_opacity_euv     STRING   "Fixed"
+
+D Opacities in the bands if Fixed option is chosen. EUV opacity assumes pure hydrogen mixture; divide by eos_singlespeciesA 
+D These values are motivated by star cluster SED-weighted averages shown in Figure 22, Kim et al. 2023
+D Bands: FUV, EUV, Photoelectric (PE), Lyman-Werner (LW), Infrared (IR)
+PARAMETER dust_euvopac_value  REAL  1.25e3
+PARAMETER dust_fuvopac_value  REAL  600.0
+PARAMETER dust_peopac_value   REAL  514.0
+PARAMETER dust_lwopac_value   REAL  900.0
+PARAMETER dust_iropac_value   REAL  10.0
+
+D Dust to gas ratio relative to the solar value
+PARAMETER dusttoGasRatio    REAL  1.0
+
+DATAFILES *.dat
+DATAFILES *.inp
+

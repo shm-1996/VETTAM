@@ -1,0 +1,2 @@
+#	Configuration file for the dust+gas opacity module (Semenov) and opacity due to stellar radiation (Sinks)
+DEFAULT DustOpacities

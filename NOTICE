@@ -1,0 +1,41 @@
+VETTAM -- Variable Eddington Tensor-closed Transport on Adaptive Meshes
+Copyright (c) 2020-2026 Shyam Harimohan Menon
+
+Primary reference:
+  Menon, S. H., Federrath, C., Krumholz, M. R., et al. 2022,
+  MNRAS 512, 401 -- "VETTAM: a scheme for radiation hydrodynamics with
+  adaptive mesh refinement using the variable Eddington tensor method"
+
+This module is written to be compiled inside the FLASH code and calls FLASH's
+Grid, Driver, Eos, Hydro, Particles and Opacity interfaces. FLASH itself is not
+included in or distributed with this release; obtain it from the Flash Center
+for Computational Science (https://flash.rochester.edu/site/flashcode/).
+
+
+THIRD-PARTY COMPONENTS
+======================
+
+physics/RadTrans/RadTransMain/VETTAM/RayTrace/3DRT/healpix/healpix.F90
+
+  An extract of the pix2ang_ring routine and its helpers from the pix_tools
+  module of the HEALPix package, reduced by Lars Buntemeyer (2014).
+
+    HEALPix:  Gorski, K. M., Hivon, E., Banday, A. J., et al. 2005,
+              ApJ 622, 759 -- http://healpix.sourceforge.net
+    License:  GNU General Public License
+
+  HEALPix is GPL-licensed, and that license governs this file.
+
+physics/RadTrans/RadTransMain/VETTAM/RayTrace/interpolate_bezier.{f90,h}
+
+  Machine-generated with SymPy 1.0 (http://www.sympy.org).
+
+physics/materialProperties/Opacity/RadTrans/DustOpacities/
+
+  Dust opacity tables and evaluation routines follow
+
+    Semenov, D., Henning, Th., Helling, Ch., Ilgner, M., Sedlmayr, E. 2003,
+    A&A 410, 611 -- "Rosseland and Planck mean opacities for protoplanetary
+    discs"
+
+  Tabulated data: kP_h2001.dat, kR_h2001.dat.
