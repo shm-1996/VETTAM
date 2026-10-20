@@ -1,0 +1,167 @@
+README for the VETTAM unit test suite
+(source/Simulation/SimulationMain/unitTest/VETTAM)
+AUTHOR: Shyam Harimohan Menon (2021)
+Reference: VETTAM Method Paper (Menon et al 2022, MNRAS 512, 401)
+############################################################################################################
+
+run_tests.py is the test driver. It builds the VETTAM verification problems,
+compares each against its analytic solution, and returns a pass/fail status.
+Use it for quick verification after changing the module.
+
+Setup targets are unitTest/VETTAM/<Simulation>, e.g.
+
+  ./setup unitTest/VETTAM/Streaming_Pulse -1d -auto -nxb=8 +bouchut
+
+though run_tests.py issues those itself. Parfiles live in parfiles/.
+
+These are the 1-D tests from the method paper. The 3-D ones (RHDThinShell and
+the Rosen et al. shadow tests) are not included: they are built on the legacy
+RadTransMain/VET unit rather than VETTAM, and are not part of this release.
+
+Running the tests
+-----------------
+
+  ./run_tests.py                     quick suite: ~3 min including builds
+  ./run_tests.py --full              adds the advection test (hours)
+  ./run_tests.py --test diffusion    one test
+  ./run_tests.py --compile-only      build only; the cheapest smoke test
+  ./run_tests.py --no-compile        reuse existing objdirs
+  ./run_tests.py --overwrite         rerun even if outputs exist
+  ./run_tests.py --plots             also write diagnostic figures
+  ./run_tests.py --list
+
+Stored output is reused between invocations, but only when it is trustworthy:
+if flash4 or the parfile is newer than the saved plotfiles, that case is rerun
+automatically and says so. Reusing output from an older binary is how the
+diffusion test once appeared to have a 1500% error, so this is checked rather
+than left to --overwrite. In practice, rebuild the module and rerun with
+--no-compile and only the affected cases will actually execute.
+
+Exits 0 if everything is inside tolerance and 1 otherwise, so it can gate a
+commit. Every number it computes is written to unitTest_metrics.json, so a
+regression can be diffed rather than guessed at. Requires numpy and h5py only
+(deliberately not yt, so it stays fast and dependency-light). Object
+directories objVETTAM_* are created at the FLASH root; the FLASH tree is found
+by walking up from this script, or set --flash-dir / FLASH_DIR.
+
+Tests registered:
+
+  streaming    Free-streaming pulse (Fig. 1 left). Must advect at exactly c
+               with radiation energy conserved. Checks propagation speed,
+               energy drift and L1 against the rigidly shifted profile.
+  diffusion    Diffusing pulse at rho*kappa = 40 and 4e4 cm^-1 (Fig. 1 middle,
+               right), compared against the analytic Gaussian spreading
+               solution. A third case, "skipgate", reruns the weak setup with
+               rt_dt_maxvel lowered so VETTAM's update gate skips ~4 of every 5
+               hydro steps, and asserts the pulse width still follows
+               sqrt(1/(2 nu^2) + 2 D t). That is a regression guard for BUG-10
+               (see the module's BUGS.md): with that bug the width comes out 53%
+               short, against ~3% when correct. The plain weak and strong cases
+               both pass with the bug present, which is why it exists.
+  marshak      Su & Olson (1996) Marshak wave (Fig. 4). Compares E_r and a_R T^4
+               against tau_{0.1,1,10,100}.dat at the dumps nearest those
+               dimensionless times, tau = epsilon*c*rho*kappa*t. tau=0.1 is
+               measured but not asserted on: the earliest dump sits at
+               tau ~ 0.117 and there is no closer one, so that comparison
+               reflects the time offset rather than solver error. Ported off the
+               legacy Cool unit on 2026-10-20; its cool_hydro_update.F90
+               override existed only to add a closed-form temperature update for
+               c_v = alpha*T^3, now rt_temp_type=5 with rt_cv_alpha, which
+               Simulation_initBlock sets to 4*a_r/sim_epsilon.
+  radshock     Lowrie & Edwards (2008) M=3 radiation shock (Fig. 5). Checks the
+               gas and radiation temperature profiles against the semi-analytic
+               solution in Radiation_Shock_LE/M03.0_soln.out; the lab-frame
+               moments are transformed to the comoving frame first. Ported off
+               the legacy Cool unit on 2026-10-19, which needed two things
+               VETTAM now has: per-face Dirichlet radiation temperatures
+               (rt_boundary_T_xl/xr/...) and dust_opacity_ir="Constant", a
+               total extinction coefficient that skips the dust-to-gas scaling
+               and the thermal sputtering cutoff. Simulation_init supplies both
+               from the dimensionless inputs, so the 2841-line cool_vet.F90
+               override the test used to carry is gone.
+  radtempeq_lin
+               The same problem and the same parfiles as radtempeq, but built
+               with the LinTempUpdate overrides via
+               -unit=physics/RadTrans/RadTransMain/VETTAM/LinTempUpdate. Those
+               replace the outer Picard/Newton-Raphson temperature iteration
+               with a fully coupled linearised solve: the gas temperature
+               becomes an extra matrix unknown (NDIM+2 per cell) with the
+               a_r T^4 emission linearised about T^n, and rt_dustTemperature
+               does nothing but re-run the EOS. rt_hydro_type and rt_temp_type
+               are inert in that build.
+               Both schemes have to land on the same equilibrium, because that
+               is fixed by energy conservation, but they differ during the
+               relaxation (about 1 per cent at the first dump for P = 10), so
+               this is an independent discretisation measured against the same
+               analytic answer rather than a rerun of the same code.
+  radtempeq    Radiation-gas equilibration over 20 decades in the radiation to
+               gas energy ratio (Fig. 3). Must relax to the temperature implied
+               by total energy conservation. Runs on ONE rank: the domain is a
+               single 8-cell block, so extra ranks own nothing and the PETSc
+               solve stalls.
+  advection    Dynamic diffusion, Krumholz et al. 2007 (Fig. 6). Hours; only
+               energy conservation is asserted. Use --full.
+
+Not registered: RHDThinShell, Rosen_SinkTest
+and Rosen_ShadowBlobs all REQUIRE the legacy RadTransMain/VET or
+Cool/CoolMain/RadTransVET unit, not VETTAM. Porting them means rewriting their
+simulation-level cool_hydro_update.F90 / cool_vet.F90 overrides. Until then
+VETTAM has no automated 3D or sink-particle coverage here; for compile coverage
+of those paths use a production setup, e.g.
+  ./setup Ionize_HIIRegion -3d -auto -nxb=8 -nyb=8 -nzb=8 +bouchut +bhtree
+
+
+Parfile repairs (2026-09-30)
+----------------------------
+
+The VETTAM parfiles in Menon21Parfiles/ were rewritten because most of the
+suite was not exercising VETTAM at all. Four failure modes, all silent:
+
+1. cool_* vs rt_*. VETTAM reads rt_*; the legacy Cool/CoolMain/RadTransVET unit
+   reads cool_*. RadPulseStreaming.par, RadTempEq_*.par and Advection_Pulse_*.par
+   still used the old names, so VETTAM ran entirely on defaults. useCool does
+   not enable it either -- useRadTrans does. Streaming aborted on startup as a
+   result (rt_etens defaulted to "vet", which needs the ray tracer); RadTempEq
+   and Advection ran with radiation switched off.
+2. TreeRay shares the rt_ prefix. rt_computeDt, rt_dtFactor, rt_irradiation,
+   rt_nPhi, rt_dirX, rt_ALI, rt_PPM_*, rt_healpix_* belong to TreeRay.
+   rt_dtFactor exists in BOTH units, so the TreeRay block was silently setting
+   VETTAM's.
+3. Duplicate keys: FLASH takes the LAST assignment. RadPulseStrongDiffusion.par
+   set dust_iropac_value in a preamble and again in the body, so it had been
+   running the weak-diffusion opacity all along, not the strong one.
+4. No arithmetic. sim_eddvalue = 1./3. parses as 1.0, not 0.3333.
+
+Also note rt_etens="edd" OVERWRITES XXED with 1/3 every step. A test that sets
+its own Eddington factor in the initial conditions (streaming wants f = 1) must
+use rt_etens="user", which leaves XXED alone. With "edd" the streaming pulse
+travels at c/sqrt(3).
+
+FLASH logs "ignoring unknown parameter" for typos but NOT for a valid parameter
+belonging to another unit, which is why all of this passed unnoticed.
+
+The originals are recoverable from git; the pre-rewrite README is kept as
+README.orig.bak.
+
+
+Diagnostic plots
+----------------
+
+--plots writes one PDF per test to ./figures (override with --plot-dir). Each
+figure overlays the numerical solution on its analytic counterpart and is
+annotated with the measured L1 error beside the value published in Menon et al.
+2022, so agreement or drift is visible in the figure itself. Current agreement:
+
+  streaming       L1 0.070, 0.159, 0.277   vs published 0.037, 0.160, 0.277
+  weak diffusion  L1 0.020, 0.029, 0.032   vs published 0.050, 0.037, 0.033
+  strong diff.    L1 0.030, 0.032, 0.033   vs published 0.024, 0.030, 0.032
+
+The plotting lives in vettam_plots.py, ported from the content of
+the method paper's plotting onto the vettam_io reader. It needs matplotlib and
+nothing else -- no yt, scipy or flashplotlib -- and is imported lazily, so the
+default run stays dependency-light. A figure that fails to render prints a
+warning and does not fail the suite.
+
+
+
+Feel free to email me with any questions....

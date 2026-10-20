@@ -1,0 +1,112 @@
+# VETTAM unit test: free-streaming radiation pulse
+# Menon et al. 2022, MNRAS 512, 401 -- Fig. 1 (left panel)
+#
+# A Gaussian pulse of radiation in an effectively transparent medium
+# (rho*kappa = 1e-20 cm^-1) advected at the speed of light across a
+# periodic box. Exercises the transport (hyperbolic) limit of the
+# two-moment solver with a fixed Eddington factor f = 1.
+
+# --- Simulation ------------------------------------------------------
+sim_rhoambient          = 1.e-20
+sim_erambient           = 0.0
+sim_eddvalue            = 1.0       # free-streaming closure, f = 1
+sim_type                = "gaussian"
+sim_nu                  = 20.0
+sim_mu                  = 0.0
+sim_vx                  = 0.0
+
+# --- Grid ------------------------------------------------------------
+geometry                = "cartesian"
+xmin                    = -0.5
+xmax                    =  0.5
+nblockx                 = 256
+
+xl_boundary_type        = "periodic"
+xr_boundary_type        = "periodic"
+yl_boundary_type        = "periodic"
+yr_boundary_type        = "periodic"
+zl_boundary_type        = "periodic"
+zr_boundary_type        = "periodic"
+
+lrefine_max             = 1
+lrefine_min             = 1
+refine_var_1            = "none"
+
+useParticles            = .false.
+useSinkParticles        = .false.
+
+# --- Time stepping ---------------------------------------------------
+# tmax = one light crossing time of the box, L/c
+tmax                    = 3.3356409519815206e-11
+nend                    = 100000
+dtmin                   = 1.e-18
+dtmax                   = 5.0e99
+
+restart                 = .false.
+checkpointFileNumber    = 0
+plotFileNumber          = 0
+
+basenm                  = "Pulse_"
+log_file                = "Pulse.log"
+run_comment             = "VETTAM unit test: streaming pulse"
+
+checkpointFileIntervalStep = 0
+checkpointFileIntervalTime = 1.0e99
+# 0.1 crossing times -> 10 plotfiles + the initial one
+plotFileIntervalTime    = 3.3356409519815206e-12
+
+plot_var_1              = "dens"
+plot_var_2              = "temp"
+plot_var_3              = "xxed"
+plot_var_4              = "erad"
+plot_var_5              = "mohx"
+enableMaskedGCFill      = .true.
+
+# --- VETTAM ----------------------------------------------------------
+useRadTrans             = .true.
+useHydro                = .false.
+rt_update_hydro         = .false.  # pure transport; no gas coupling
+
+rt_etens                = "user"  # keep XXED = sim_eddvalue = 1 (free streaming)
+rt_T_min                = 2.7
+rt_compute_Dt           = .true.
+rt_Dt_type              = 1        # light crossing time of a cell
+rt_dtFactor             = 1.0
+
+rt_rtol                 = 1.e-12
+rt_abstol               = 1.e-20
+rt_dtol                 = 1.e10
+rt_maxits               = 10000
+rt_minits               = 10
+rt_preconditioner       = "asm"
+rt_linearsolver         = "gmres"
+
+# Single grey band
+rt_freqbands            = 1
+rt_band1                = "IR"
+dust_opacity_ir         = "Fixed"
+dust_iropac_value       = 1.0      # rho*kappa = 1e-20 cm^-1: transparent
+
+# Radiation BCs: 1=reflecting, 2=outflow, 3=Dirichlet, 4=periodic
+xl_rad_BC               = 4
+xr_rad_BC               = 4
+yl_rad_BC               = 4
+yr_rad_BC               = 4
+zl_rad_BC               = 4
+zr_rad_BC               = 4
+
+# --- Hydro / EOS (inactive, but must be consistent) ------------------
+eos_singleSpeciesA      = 2.3
+gamma                   = 1.666666666667
+eintSwitch              = 0
+cfl                     = 0.5
+useGravity              = .false.
+usePolytrope            = .false.
+
+small                   = 1.0e-99
+smlrho                  = 1.0e-99
+smallp                  = 1.0e-99
+smalle                  = 1.0e-99
+smallt                  = 1.0e-99
+smallu                  = 1.0e-99
+smallx                  = 1.0e-99

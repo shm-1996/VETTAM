@@ -14,6 +14,7 @@ directories only, laid out exactly as they sit under a FLASH `source/` tree:
 ```
 physics/RadTrans/RadTransMain/VETTAM/          #the module
 physics/materialProperties/Opacity/RadTrans/   #dust opacities
+Simulation/SimulationMain/unitTest/VETTAM/     #verification test suite
 ```
 The subdirectories include additional functionalities which you should include if your problem requires them:
 ```
@@ -39,9 +40,10 @@ From the root of this repository:
 ./install.sh /path/to/your/flash/source
 ```
 
-That copies both unit directories into place. Pass `--link` to symlink instead, which is
-convenient while developing against a checkout. Nothing outside these two directories is
-touched, and no FLASH core file is modified.
+That copies each directory to the same path under your `source/` tree. Pass `--link` to
+symlink instead, which is convenient while developing against a checkout, and `--no-tests`
+to leave out the test suite. Nothing outside those directories is touched, and no FLASH
+core file is modified.
 
 Then point your `Makefile.h` file in the machine-specific directory within `sites/` to the install path of $\texttt{PETSc}$ :
 
@@ -102,6 +104,36 @@ Every `LWBand` flavour needs Multispecies `H_SPEC` and `H2_SPEC` at compile time
 `#ifndef H2_SPEC` check inside `rt_lw.F90` is a runtime abort and will not spare you a
 compile error, so declare the species in your simulation `Config`, or pull in a
 chemistry unit that does.
+
+## Verifying the build
+
+`Simulation/SimulationMain/unitTest/VETTAM/` holds the 1-D verification problems from the
+method paper, wired up so one command builds them, runs them, compares against the analytic
+solutions and exits non-zero if anything drifts:
+
+```bash
+cd /path/to/flash/source/Simulation/SimulationMain/unitTest/VETTAM
+./run_tests.py                  # 51 checks, a few minutes including builds
+./run_tests.py --plots          # also write diagnostic figures
+./run_tests.py --compile-only   # build only
+./run_tests.py --list
+```
+
+| Test | Checks against |
+| --- | --- |
+| `streaming` | a Gaussian pulse advecting at exactly `c`, energy conserved |
+| `diffusion` | the analytic spreading Gaussian at two optical depths, plus a guard that the answer does not depend on how often the update gate fires |
+| `marshak` | Su & Olson (1996) Marshak wave tables |
+| `radshock` | Lowrie & Edwards (2008) `M = 3` radiation shock |
+| `radtempeq` | gas-radiation equilibration over 20 decades in the radiation-to-gas energy ratio |
+| `advection` | dynamic diffusion, Krumholz et al. (2007). Hours; `--full` |
+
+`numpy` and `h5py` only — not yt. `matplotlib` is needed for `--plots` and is imported
+lazily. See that directory's `README` for tolerances and what each test pins down.
+
+The suite also registers `radtempeq_lin`, which repeats the equilibration problem against
+the `LinTempUpdate` solver variant. That variant is not part of this release, so the test
+reports itself as skipped rather than failing.
 
 ## Documentation
 

@@ -1,0 +1,24 @@
+# Configuration File for setup of Radiation Shocks
+#
+#
+
+REQUIRES Driver
+REQUIRES physics/RadTrans/RadTransMain/VETTAM
+REQUIRES physics/Eos
+REQUIRES Grid
+
+GUARDCELLS 4
+
+
+PARAMETER sim_rholeft    REAL     1.0
+PARAMETER sim_rhoright   REAL     3.0
+PARAMETER sim_Tleft   	 REAL     1.e1
+PARAMETER sim_Tright   	 REAL     1.e1
+PARAMETER sim_vleft   	 REAL     1.e1
+PARAMETER sim_vright   	 REAL     1.e1
+PARAMETER sim_eddvalue   REAL     0.33
+PARAMETER sim_P0         REAL     1.e-4
+PARAMETER sim_sigma      REAL     1.e6
+PARAMETER sim_kappa      REAL     1.0
+
+DATAFILES *.out

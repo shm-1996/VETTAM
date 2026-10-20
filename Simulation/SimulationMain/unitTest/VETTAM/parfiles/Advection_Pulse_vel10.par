@@ -1,0 +1,203 @@
+# VETTAM unit test: advecting radiation pulse (v = 10 * a_r)
+# Menon et al. 2022, MNRAS 512, 401 -- Fig. 6
+# EXPENSIVE (~hours) -- not part of the quick suite.
+# Migrated from the Menon (2021) cool_* parameter names to VETTAM's rt_*.
+
+
+# Simulation parameters:	
+sim_rhoambient          =  1.2
+sim_eddvalue            =  0.33
+sim_nu                  =  24.0
+sim_T0                  = 1.e7
+sim_T1                  = 2.e7
+#vx = 0.0 static diffusion
+sim_vx                  =  1.e6
+
+#Fixed opacity value
+dust_iropac_value     =  100.0
+enableGCMaskedFill = .true.
+
+xmin                           = -512.0
+xmax                           = 512.0
+ymin                           = -512.0
+ymax                           = 512.0
+zmin                           = -512.0
+zmax                           = 512.0
+
+geometry = "cartesian"
+xl_boundary_type               = "periodic" 
+xr_boundary_type               = "periodic" 
+yl_boundary_type               = "periodic" 
+yr_boundary_type               = "periodic" 
+zl_boundary_type               = "periodic" 
+zr_boundary_type               = "periodic" 
+
+# Sink particles
+
+useParticles              = .false.
+useSinkParticles          = .false.
+
+# Refinement parameters:
+
+lrefine_max           = 1
+lrefine_min           = 1
+refine_var_1          = "none"
+refine_var_thresh     = "dens"
+refineOnJeansLength   = .false.
+jeans_ncells_ref      = 16.0
+jeans_ncells_deref    = 32.0
+refineOnSinkParticles = .false.
+
+nblockx               = 128
+
+bb_init_restart      = .false.
+restart              = .false.
+checkpointFileNumber = 0
+plotFileNumber       = 0
+particleFileNumber   = 0
+movie_dump_num       = 0
+
+basenm      = "Advection_"
+log_file    = "Advection.log"
+run_comment = "Advection"
+
+tmax   = 4.8e-5
+nend   = 10000
+wall_clock_checkpoint = 21000.0
+wall_clock_time_limit = 17100.0 # 171000.0
+
+dtmin = 1.e-15
+dtmax  = 5.0e99
+checkpointFileIntervalStep     = 0
+checkpointFileIntervalTime     = 1.0-5
+plotFileIntervalStep           = 0
+plotFileIntervalTime           = 4.8e-7 # 1.0e10
+particleFileIntervalStep       = 1
+particleFileIntervalTime       = 1e99 # 1.0e10
+
+plot_var_1  = "dens"
+plot_var_2  = "temp"
+plot_var_3  = "xxed"
+plot_var_4  = "erad"
+plot_var_5  = "mohx"
+plot_var_6  = "velx"
+enableMaskedGCFill = .true.
+# ==========================================
+#
+# Radiation from 3DRT hybrid characteristics
+#
+
+
+# background radiation field, mean intensity [erg s^-1 cm^-2]
+# J = sigma_SB/pi T^4
+# J = 1.8048171e-05 * T^4 = 0.18048171 (T/10 K)^4
+
+# number of sweep angles
+
+# nside Healpix parameter, if > 0 use Healpix tesselation
+
+# if rt_healpix_nSide==0 use one ray only with the following direction
+
+# acclerated Lambda iteration
+
+# order of integration for source function
+
+# not implemented yet
+
+# cooling & heating from radiation
+useHydro              = .true.
+useRadTrans             = .true.
+rt_T_min              = 2.7
+rt_compute_Dt         = .true.
+rt_Dt_type            = 2
+rt_dtFactor           = 1.0
+rt_rtol               = 1.e-6
+rt_abstol             = 1.e-20
+rt_dtol               = 1.e5
+rt_maxits             = 10000
+rt_minits             = 0
+rt_update_hydro       = .true.
+#Hydro update type for cooling
+#1: LTE Temp update only, 2: Picard iteration
+rt_hydro_type         = 2
+
+# Temp update type for cooling
+# 1: Newton-Rhapson iteration, 2: Commercon Linearisation, 3: Quartic Update
+rt_temp_type          = 1
+rt_picard_maxits      = 500
+rt_smallf             = 1.e10
+rt_picard_rtol        = 1.e-1
+rt_nr_dtol            = 1.e10
+rt_nr_rtol            = 1.e-6
+rt_nr_maxits          = 10000
+
+#Radiation BC
+# 1: reflecting, 2: outflow, 3: Dirichlet, 4: Periodic 
+xl_rad_BC             = 4
+xr_rad_BC             = 4
+yl_rad_BC             = 4
+yr_rad_BC             = 4
+zl_rad_BC             = 4
+zr_rad_BC             = 4
+
+#Opacity type: Accepted values - "Fixed", "Semenov"
+dust_opacity_ir       =  "Fixed"
+
+
+#Eddington tensor type
+rt_etens              = "edd"
+rt_picard_correction   = .true.
+rt_hlle_correction   = .true.
+
+# EosMode               = dens_temp
+
+# 
+# End of Radiation parameters
+# ==========================================
+
+
+# Hydrodynamics
+eos_singleSpeciesA = 2.33
+gamma = 1.666666666667
+eintSwitch = 0 # set this to zero
+cfl = 0.4
+
+use_avisc             = .false.
+cvisc                 = 0.1
+conservation is not enforced during refinement
+#UnitSystem            = "CGS"
+
+small      =  1.0e-99
+smlrho     =  1.0e-99 # 1.4182454e-23
+smallp     =  1.0E-99
+smalle     =  1.0e-99
+smallt     =  1.0e-99
+smallu     =  1.0E-99
+smallx     =  1.0E-99
+
+# === Gravity ===
+
+useGravity         = .false.
+grav_boundary_type = "isolated"
+mg_maxResidualNorm = 1.0e-6
+mg_printNorm       = .false.
+
+# === Tree grav. solver ===
+
+gr_bhIlist        = 1
+gr_bhTreeLimAngle = 0.8
+
+# Polytrope
+
+usePolytrope     = .false.
+PolytropeDens1   = 1e-99 # 1.4182454e-19
+PolytropeDens2   = 2.50e-16  # Masunaga & Inutsuka (2000)
+PolytropeDens3   = 3.84e-13
+PolytropeDens4   = 3.84e-8
+PolytropeDens5   = 3.84e-3
+PolytropeGamma1  = 1.0
+PolytropeGamma2  = 1.1
+PolytropeGamma3  = 1.4
+PolytropeGamma4  = 1.1
+PolytropeGamma5  = 1.666666
+PolytropeKonst   = 4.0e8

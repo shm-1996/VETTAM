@@ -1,0 +1,202 @@
+# Simulation parameters:	
+#These conditions are in dimensionless units of LE08
+sim_rholeft             =  1.0
+sim_rhoright            =  3.0021676971081166
+sim_Tleft               =  1.0
+sim_Tright              =  3.6619126658097194
+sim_vleft               =  3.0
+sim_vright              =  0.9992779560215092
+sim_eddvalue            =  0.3333
+sim_P0                  =  1.e-4
+sim_sigma               =  1.e6
+sim_kappa               =  1.0
+enableGCMaskedFill      = .true.
+
+xmin                           = -0.0132
+xmax                           = 0.00255
+
+geometry = "cartesian"
+xl_boundary_type               = "outflow" 
+xr_boundary_type               = "outflow" 
+
+# Refinement parameters:
+
+lrefine_max           = 3
+lrefine_min           = 1
+refine_var_1          = "temp"
+refine_var_thresh     = "dens"
+refineOnJeansLength   = .false.
+jeans_ncells_ref      = 16.0
+jeans_ncells_deref    = 32.0
+refineOnSinkParticles = .false.
+
+nblockx               = 80
+
+restart              = .false.
+checkpointFileNumber = 0
+plotFileNumber       = 0
+particleFileNumber   = 0
+movie_dump_num       = 0
+
+basenm      = "Shock_"
+log_file    = "Shock.log"
+run_comment = "Shock"
+
+tmax   = 1.e-9
+nend   = 100000
+wall_clock_checkpoint = 21000.0
+wall_clock_time_limit = 17100.0 # 171000.0
+
+dtmin = 1.e-15
+dtmax  = 5.0e99
+checkpointFileIntervalStep     = 0
+checkpointFileIntervalTime     = 1.e0
+plotFileIntervalStep           = 0
+plotFileIntervalTime           = 1.e-10 # 1.0e10
+particleFileIntervalStep       = 0
+particleFileIntervalTime       = 1e99 # 1.0e10
+
+plot_var_1  = "dens"
+plot_var_2  = "temp"
+plot_var_3  = "xxed"
+plot_var_4  = "erad"
+plot_var_5  = "mohx"
+plot_var_6  = "velx"
+plot_var_7  = "pres"
+plot_var_8  = "eint"
+plot_var_9  = "ener"
+plot_var_10 = "taup"
+enableMaskedGCFill = .true.
+# ==========================================
+#
+# Radiation from 3DRT hybrid characteristics
+#
+
+
+# background radiation field, mean intensity [erg s^-1 cm^-2]
+# J = sigma_SB/pi T^4
+# J = 1.8048171e-05 * T^4 = 0.18048171 (T/10 K)^4
+
+# number of sweep angles
+
+# nside Healpix parameter, if > 0 use Healpix tesselation
+
+# if rt_healpix_nSide==0 use one ray only with the following direction
+
+# acclerated Lambda iteration
+
+# order of integration for source function
+
+# not implemented yet
+
+# cooling & heating from radiation
+useHydro              = .true.
+useRadTrans           = .true.
+rt_T_min              = 2.7
+rt_compute_Dt         = .true.
+rt_Dt_type            = 2
+rt_dtFactor           = 10.0
+rt_rtol               = 1.e-8
+rt_abstol             = 1.e-20
+rt_dtol               = 1.e5
+rt_maxits             = 10000
+rt_minits             = 10
+rt_update_hydro       = .true.
+#Hydro update type for cooling
+#1: LTE Temp update only, 2: Picard iteration
+rt_hydro_type         = 2
+
+# Temp update type for cooling
+# 1: Newton-Rhapson iteration, 2: Commercon Linearisation, 3: Quartic Update
+rt_temp_type          = 1
+rt_picard_maxits      = 10000
+rt_picard_rtol        = 1.e-4
+rt_nr_dtol            = 1.e10
+rt_nr_rtol            = 1.e-8
+rt_nr_maxits          = 10000
+
+#Radiation BC
+# 1: reflecting, 2: outflow, 3: Dirichlet, 4: Periodic 
+xl_rad_BC             = 3
+xr_rad_BC             = 3
+
+#Dirichlet Boundary Values
+#Only read if rad_BC = 3
+#The two x faces sit at different radiation temperatures; these are the
+#dimensionless sim_Tleft/sim_Tright scaled by T0, printed by Simulation_init.
+erad_boundary_value   = 1.e-22
+fradx_boundary_value  = 0.0
+frady_boundary_value  = 0.0
+fradz_boundary_value  = 0.0
+
+#Opacity type: Accepted values - "Fixed", "Semenov"
+# Single grey band: this is a grey radiation-hydrodynamics problem, and the
+# default of 3 bands would leave TAUP holding the last band's opacity.
+rt_freqbands          = 1
+rt_band1              = "IR"
+
+dust_opacity_ir       =  "Constant"
+rt_hlle_correction    = .true.
+rt_linearsolver    = "gmres"
+rt_preconditioner   = "asm"
+
+
+#Etens type
+rt_etens        = "edd"
+
+# EosMode               = dens_temp
+
+# 
+# End of Radiation parameters
+# ==========================================
+
+
+# Hydrodynamics
+eos_singleSpeciesA = 1.0
+gamma = 1.666666666667
+eintSwitch = 0 # set this to zero
+cfl = 0.5
+
+use_avisc             = .false.
+cvisc                 = 0.1
+conservation is not enforced during refinement
+#UnitSystem            = "CGS"
+
+small      =  1.0e-99
+smlrho     =  1.0e-99 # 1.4182454e-23
+smallp     =  1.0E-99
+smalle     =  1.0e-99
+smallt     =  1.0e-99
+smallu     =  1.0E-99
+smallx     =  1.0E-99
+
+# === Gravity ===
+
+useGravity         = .false.
+grav_boundary_type = "isolated"
+mg_maxResidualNorm = 1.0e-6
+mg_printNorm       = .false.
+
+# === Tree grav. solver ===
+
+gr_bhIlist        = 1
+gr_bhTreeLimAngle = 0.8
+
+# Polytrope
+
+usePolytrope     = .false.
+PolytropeDens1   = 1e-99 # 1.4182454e-19
+PolytropeDens2   = 2.50e-16  # Masunaga & Inutsuka (2000)
+PolytropeDens3   = 3.84e-13
+PolytropeDens4   = 3.84e-8
+PolytropeDens5   = 3.84e-3
+PolytropeGamma1  = 1.0
+PolytropeGamma2  = 1.1
+PolytropeGamma3  = 1.4
+PolytropeGamma4  = 1.1
+PolytropeGamma5  = 1.666666
+PolytropeKonst   = 4.0e8
+
+# The per-face Dirichlet radiation temperatures are not set here: Simulation_init
+# derives them from sim_Tleft/sim_Tright and the T0 normalisation and writes
+# rt_boundary_T_face directly, as it does for the absorption coefficient.

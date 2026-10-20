@@ -63,8 +63,16 @@ PARAMETER rt_smallf 		REAL 		1.e-20
 D Temperature update type: 1=LTE, 2=Picard Iteration
 PARAMETER rt_hydro_type		INTEGER		2
 
-D Temperature update type: 1=Newton Rhapson, 2=Linearised, 3: Quartic
+D Temperature update type: 1=Newton Rhapson, 2=Linearised, 3: Quartic,
+D 4: Explicit, 5: closed form for c_v = rt_cv_alpha*T^3 (Su & Olson)
 PARAMETER rt_temp_type		INTEGER		1
+
+D Coefficient alpha in a specific heat of the form c_v = alpha*T^3, used by
+D rt_temp_type=5. That form makes the gas-radiation exchange solvable in closed
+D form, which is how the Su & Olson / Marshak wave benchmark is posed. Negative,
+D the default, means unset; a simulation may also assign rt_cv_alpha directly in
+D Simulation_init, since RadTrans_init runs first.
+PARAMETER rt_cv_alpha		REAL		-1.0
 
 D Picard iteration rtol
 PARAMETER rt_picard_rtol		REAL 		1.e-3
@@ -118,6 +126,17 @@ PARAMETER rt_update_hydro		BOOLEAN  TRUE
 
 D boundary condition, fixed boundary radiation temperature
 PARAMETER rt_boundary_T   REAL     10.
+
+D Per-face override of rt_boundary_T for the Dirichlet (rad_BC=3) and Marshak
+D (rad_BC=6) boundaries. A negative value, the default, means "use
+D rt_boundary_T". Needed where the two ends of the domain sit at different
+D radiation temperatures, as in the Lowrie & Edwards radiation shock.
+PARAMETER rt_boundary_T_xl  REAL  -1.0
+PARAMETER rt_boundary_T_xr  REAL  -1.0
+PARAMETER rt_boundary_T_yl  REAL  -1.0
+PARAMETER rt_boundary_T_yr  REAL  -1.0
+PARAMETER rt_boundary_T_zl  REAL  -1.0
+PARAMETER rt_boundary_T_zr  REAL  -1.0
 
 D boundary condition, fixed boundary radiation flux
 PARAMETER fradx_boundary_value  REAL     0.0

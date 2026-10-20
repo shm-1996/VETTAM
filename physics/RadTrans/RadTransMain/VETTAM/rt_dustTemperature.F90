@@ -535,6 +535,8 @@ SUBROUTINE Temperature_Update(dt,blockID)
           call LTE_tempupdate()
         else if(rt_temp_type .eq. 4) then
           call ExplicitTempUpdate(tnew(i_b,j_b,k_b))
+        else if(rt_temp_type .eq. 5) then
+          call CvAlphaT3_tempupdate()
         endif
         if (tnew(i_b,j_b,k_b) < rt_T_min) tnew(i_b,j_b,k_b) = rt_T_min
         ! Safety check
@@ -775,6 +777,22 @@ CONTAINS
     tnew(i_b,j_b,k_b) = (told + 3*mu*rt_radconst*(told**4) + mu*Er) / (1 + 4*mu*rt_radconst*(told**3))
 
   END SUBROUTINE Linearised_tempupdate
+
+  SUBROUTINE CvAlphaT3_tempupdate()
+
+    !Closed-form gas-radiation exchange for a material whose specific heat is
+    !c_v = rt_cv_alpha*T^3. With that form the implicit energy balance reduces
+    !to a linear equation in T^4, so no iteration is needed. This is how the
+    !Su & Olson (1996) Marshak wave benchmark is posed.
+    real :: zeta
+    if(rt_cv_alpha .le. 0.0) call Driver_abortFlash(&
+      "[VETTAM]: rt_temp_type=5 needs a positive rt_cv_alpha (c_v = alpha*T^3).")
+    zeta = 4.0*solnData(TAUP_VAR,i,j,k)*dt*rt_speedlt/rt_cv_alpha
+    tnew(i_b,j_b,k_b) = (((solnData(TMPO_VAR,i,j,k)**4) &
+                          + zeta*solnData(ERAD_VAR,i,j,k)) &
+                         /(1.0 + zeta*rt_radconst))**0.25
+
+  END SUBROUTINE CvAlphaT3_tempupdate
 
   SUBROUTINE LTE_tempupdate()
 

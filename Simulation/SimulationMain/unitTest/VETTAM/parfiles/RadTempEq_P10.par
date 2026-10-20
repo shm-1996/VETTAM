@@ -1,0 +1,118 @@
+# VETTAM unit test: radiation-gas energy equilibration (P10)
+# Menon et al. 2022, MNRAS 512, 401 -- Fig. 3
+#
+# A uniform, static box with gas and radiation initially out of thermal
+# equilibrium. There is no transport: the cell relaxes to the equilibrium
+# temperature set by conservation of total (gas + radiation) energy,
+#     a_r T^4 + rho R T / ((gamma-1) mu) = e_tot ,
+# which is the quantity the test checks. rho*kappa = 1 cm^-1 in all three
+# variants; only the gas/radiation energy ratio P = 10 differs.
+
+# --- Simulation ------------------------------------------------------
+sim_rhoambient          = 1.e-17
+sim_tempAmbient         = 100.0
+sim_erambient           = 7.565733250033928e-13
+sim_eddvalue            = 0.33333333333333
+
+# --- Grid: a single 8-cell block; the problem is 0-D ------------------
+geometry                = "cartesian"
+xmin                    = 0.0
+xmax                    = 1.0
+ymin                    = 0.0
+ymax                    = 1.0
+zmin                    = 0.0
+zmax                    = 1.0
+nblockx                 = 1
+
+xl_boundary_type        = "periodic"
+xr_boundary_type        = "periodic"
+yl_boundary_type        = "periodic"
+yr_boundary_type        = "periodic"
+zl_boundary_type        = "periodic"
+zr_boundary_type        = "periodic"
+
+lrefine_max             = 1
+lrefine_min             = 1
+refine_var_1            = "none"
+
+useParticles            = .false.
+useSinkParticles        = .false.
+
+# --- Time stepping ---------------------------------------------------
+tmax                    = 4.e-10
+nend                    = 1000000
+dtmin                   = 1.e-18
+dtmax                   = 1.e-8
+
+restart                 = .false.
+checkpointFileNumber    = 0
+plotFileNumber          = 0
+
+basenm                  = "RadTempEq_"
+log_file                = "RadTempEq.log"
+run_comment             = "VETTAM unit test: rad-gas equilibration P10"
+
+checkpointFileIntervalStep = 0
+checkpointFileIntervalTime = 1.0e99
+plotFileIntervalTime    = 4.e-12
+
+plot_var_1              = "dens"
+plot_var_2              = "temp"
+plot_var_3              = "xxed"
+plot_var_4              = "erad"
+plot_var_5              = "mohx"
+plot_var_6              = "eint"
+enableMaskedGCFill      = .true.
+
+# --- VETTAM ----------------------------------------------------------
+useRadTrans             = .true.
+useHydro                = .false.
+rt_update_hydro         = .true.   # this test is all about the coupling
+rt_hydro_type           = 2        # Picard iteration
+rt_temp_type            = 1        # Newton-Raphson temperature update
+
+rt_etens                = "edd"
+rt_T_min                = 2.7
+rt_compute_Dt           = .true.
+rt_Dt_type              = 1
+rt_dtFactor             = 1.e-2
+
+rt_rtol                 = 1.e-10
+rt_abstol               = 1.e-20
+rt_dtol                 = 1.e15
+rt_maxits               = 10000
+rt_minits               = 10
+rt_picard_rtol          = 1.e-3
+rt_picard_correction    = .true.
+rt_nr_rtol              = 1.e-14
+rt_nr_dtol              = 1.e10
+rt_preconditioner       = "asm"
+rt_linearsolver         = "bcgs"   # gmres+asm breaks down on this stiff 0-D system
+
+rt_freqbands            = 1
+rt_band1                = "IR"
+dust_opacity_ir         = "Fixed"
+dust_iropac_value       = 1.e17   # rho*kappa = 1 cm^-1
+
+xl_rad_BC               = 4
+xr_rad_BC               = 4
+yl_rad_BC               = 4
+yr_rad_BC               = 4
+zl_rad_BC               = 4
+zr_rad_BC               = 4
+
+# --- Hydro / EOS -----------------------------------------------------
+eos_singleSpeciesA      = 0.6
+gamma                   = 1.666666666667
+eintSwitch              = 0
+cfl                     = 0.5
+useGravity              = .false.
+usePolytrope            = .false.
+
+small                   = 1.0e-99
+smlrho                  = 1.0e-99
+smallp                  = 1.0e-99
+smalle                  = 1.0e-99
+smallt                  = 1.0e-99
+smallu                  = 1.0e-99
+smallx                  = 1.0e-99

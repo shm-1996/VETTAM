@@ -1,0 +1,28 @@
+# Configuration File for setup Marshak Wave
+#
+
+REQUIRES Driver
+REQUIRES physics/RadTrans/RadTransMain/VETTAM
+REQUIRES physics/Eos
+REQUIRES Grid
+
+GUARDCELLS 4
+
+D      sim_rhoAmbient     reference density
+D      sim_tempAmbient	  reference temperature
+D      sim_erAmbient	  reference E_rad
+D      sim_eddvalue	  fixed XXED value
+D      sim_gamma          gamma value
+D      sim_alpha          C_V coupling constant
+
+PARAMETER sim_rhoAmbient    REAL     1.e0
+PARAMETER sim_tempAmbient   REAL     0.0
+PARAMETER sim_erAmbient     REAL     0.0
+PARAMETER sim_eddvalue      REAL     1.0
+PARAMETER sim_gamma         REAL     1.67
+PARAMETER sim_epsilon       REAL     1.0
+PARAMETER sim_finc          REAL     1.e24
+PARAMETER sim_tH            REAL     1.16e7
+
+DATAFILES *.dat
+

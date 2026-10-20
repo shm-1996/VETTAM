@@ -1,0 +1,27 @@
+# Configuration File for setup Square Radiation Pulse Test
+#
+# For example applications see Sekora & Stone (2010)
+#
+
+REQUIRES Driver
+REQUIRES physics/RadTrans/RadTransMain/VETTAM
+REQUIRES physics/Eos
+REQUIRES Grid
+
+GUARDCELLS 4
+
+D      sim_rhoAmbient     reference density
+D      sim_erAmbient	  reference E_rad
+D      sim_eddvalue	  fixed XXED value
+D      sim_gamma          gamma value
+D      sim_nu             Gaussian std
+D      sim_mu             Gaussian mean 
+PARAMETER sim_rhoAmbient    REAL     1.e0
+PARAMETER sim_erAmbient     REAL     1.0
+PARAMETER sim_eddvalue      REAL     1.0
+PARAMETER sim_gamma         REAL     1.67
+PARAMETER sim_nu            REAL     20.0
+PARAMETER sim_mu            REAL     0.0
+PARAMETER sim_vx            REAL     0.0
+PARAMETER sim_type          STRING   "gaussian"
+

@@ -43,6 +43,10 @@ SUBROUTINE rt_setOpacity()
   integer :: b, blockID, myPE, i, j, k
   real, dimension(:,:,:,:), pointer :: solnData
   real :: rho, temp, kappa, opac_planck, opac_rosseland, iony, opac_gas, nH, nH2, ion_cross_section
+  !False when the opacity is a total extinction coefficient rather than a
+  !dust opacity, in which case the dust-to-gas scaling and the thermal
+  !sputtering destruction below must not be applied to it.
+  logical :: isDustOpacity
   real, save :: mH
   logical, save :: firstCall = .true.
 
@@ -78,7 +82,8 @@ SUBROUTINE rt_setOpacity()
         do i = blkLimitsGC(LOW, IAXIS), blkLimitsGC(HIGH, IAXIS)
 
           rho    = solnData(DENS_VAR,i,j,k)
-          opac_gas = 0.0 
+          opac_gas = 0.0
+          isDustOpacity = .true. 
 
           !Opacity EUV due to dust
           if(current_band .eq. 'EUV' .or. current_band .eq. 'EUV_13P6_15P2' .or. &
@@ -158,6 +163,16 @@ SUBROUTINE rt_setOpacity()
             else if(dust_opacity_ir .eq. "Scattering") then
               opac_planck = 0.0
               opac_rosseland = dust_iropac_value*rho
+
+            !Constant total opacity, i.e. dust_iropac_value is an extinction
+            !coefficient per unit length and is NOT multiplied by density.
+            !The Lowrie & Edwards radiation shock is posed this way; its
+            !Simulation_init writes the dimensional value into
+            !dust_iropac_value directly.
+            else if(dust_opacity_ir .eq. "Constant") then
+              opac_planck = dust_iropac_value
+              opac_rosseland = opac_planck
+              isDustOpacity = .false.
             
             !Semenov opacities
             else if(dust_opacity_ir .eq. "Semenov" .or. dust_opacity_ir .eq. "ScatSemenov" &
@@ -185,6 +200,7 @@ SUBROUTINE rt_setOpacity()
             endif
           endif
 
+          if(isDustOpacity) then
           !Scale opacities by dust-to-gas ratio, relative to solar, for dust opacities
           opac_planck = max(opac_planck * dusttoGasRatio, 1.e-10 * solnData(DENS_VAR,i,j,k))
           opac_rosseland = max(opac_rosseland * dusttoGasRatio, 1.e-10 * solnData(DENS_VAR,i,j,k))
@@ -197,6 +213,7 @@ SUBROUTINE rt_setOpacity()
             opac_rosseland = 1.e-10 * solnData(DENS_VAR,i,j,k)
           endif
 #endif
+          endif
 
           !Total EUV opacity = dust + hydrogen gas opacity (non-zero only for EUV band)
           solnData(TAUP_VAR,i,j,k) = opac_planck + opac_gas

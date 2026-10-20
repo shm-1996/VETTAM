@@ -1,0 +1,121 @@
+# VETTAM unit test: diffusing radiation pulse -- strong diffusion
+# Menon et al. 2022, MNRAS 512, 401 -- Fig. 1 (right panel)
+#
+# A Gaussian pulse E(x,0) = exp(-nu^2 x^2) spreading in a static medium of
+# constant total opacity rho*kappa = 4e4 cm^-1. The analytic solution is
+#     E(x,t) = (1 + 4 D t nu^2)^-1/2 exp(-nu^2 x^2 / (4 D t nu^2 + 1)) ,
+# with D = c / (3 rho kappa). The run ends at sqrt(D t) = 0.5.
+#
+# Here the cell is optically thick (tau_cell ~ 156) and the time step is well
+# above the explicit cell diffusion time, so this exercises the asymptotic
+# behaviour of the implicit solve. rt_hlle_correction reduces the HLLE signal
+# speed in the diffusion limit; without it the scheme is far too diffusive.
+
+# --- Simulation ------------------------------------------------------
+sim_rhoambient          = 1.e-20
+sim_cambient            = 0.2e-10
+sim_erambient           = 1.0
+sim_eddvalue            = 0.333333333333333   # note: FLASH does not evaluate "1./3."
+sim_nu                  = 20.0
+sim_mu                  = 0.0
+sim_vx                  = 0.0                 # static diffusion
+
+# --- Grid ------------------------------------------------------------
+geometry                = "cartesian"
+xmin                    = -5.0
+xmax                    =  5.0
+nblockx                 = 320
+
+xl_boundary_type        = "periodic"
+xr_boundary_type        = "periodic"
+yl_boundary_type        = "periodic"
+yr_boundary_type        = "periodic"
+zl_boundary_type        = "periodic"
+zr_boundary_type        = "periodic"
+
+lrefine_max             = 1
+lrefine_min             = 1
+refine_var_1            = "none"
+
+useParticles            = .false.
+useSinkParticles        = .false.
+
+# --- Time stepping ---------------------------------------------------
+tmax                    = 1.e-6
+nend                    = 1000000
+dtmin                   = 1.e-18
+dtmax                   = 5.0e99
+
+restart                 = .false.
+checkpointFileNumber    = 0
+plotFileNumber          = 0
+
+basenm                  = "RadDiffuse_"
+log_file                = "RadDiffuse.log"
+run_comment             = "VETTAM unit test: diffusion pulse (strong diffusion)"
+
+checkpointFileIntervalStep = 0
+checkpointFileIntervalTime = 1.0e99
+plotFileIntervalTime    = 1.0e-8
+
+plot_var_1              = "dens"
+plot_var_2              = "temp"
+plot_var_3              = "xxed"
+plot_var_4              = "erad"
+plot_var_5              = "mohx"
+plot_var_6              = "taur"
+enableMaskedGCFill      = .true.
+
+# --- VETTAM ----------------------------------------------------------
+useRadTrans             = .true.
+useHydro                = .false.
+rt_update_hydro         = .false.   # pure transport; gas is a fixed background
+
+rt_etens                = "edd"     # Eddington closure, f = 1/3
+rt_T_min                = 2.7
+rt_compute_Dt           = .true.
+rt_Dt_type              = 1
+rt_dtFactor             = 1000.0
+rt_hlle_correction      = .true.
+
+rt_rtol                 = 1.e-12
+rt_abstol               = 1.e-20
+rt_dtol                 = 1.e10
+rt_maxits               = 10000
+rt_minits               = 10
+rt_preconditioner       = "asm"
+rt_linearsolver         = "gmres"
+
+rt_freqbands            = 1
+rt_band1                = "IR"
+dust_opacity_ir         = "Fixed"
+dust_iropac_value       = 4.e24   # rho*kappa = 4e4 cm^-1
+
+# Radiation BCs: 1=reflecting, 2=outflow, 3=Dirichlet, 4=periodic
+xl_rad_BC               = 2
+xr_rad_BC               = 2
+yl_rad_BC               = 4
+yr_rad_BC               = 4
+zl_rad_BC               = 4
+zr_rad_BC               = 4
+
+erad_boundary_value     = 1.e-22
+fradx_boundary_value    = 0.0
+frady_boundary_value    = 0.0
+fradz_boundary_value    = 0.0
+
+# --- Hydro / EOS (inactive) ------------------------------------------
+eos_singleSpeciesA      = 2.3
+gamma                   = 1.666666666667
+eintSwitch              = 0
+cfl                     = 0.5
+useGravity              = .false.
+usePolytrope            = .false.
+
+small                   = 1.0e-99
+smlrho                  = 1.0e-99
+smallp                  = 1.0e-99
+smalle                  = 1.0e-99
+smallt                  = 1.0e-99
+smallu                  = 1.0e-99
+smallx                  = 1.0e-99

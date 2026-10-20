@@ -2031,7 +2031,7 @@ CONTAINS
           if(which_axis .eq. IAXIS) then
             coeff_ID(1:NDIM+1,1) = -1
             coeff_ID(1:NDIM+1,2) = -1
-            vec(:) = vec(:) - coeff(:,1)*rt_radconst*rt_boundary_T**4
+            vec(:) = vec(:) - coeff(:,1)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(1) = vec(1) - coeff(1,2)*fradx_boundary_value
             vec(2) = vec(2) - coeff(2,2)*fradx_boundary_value
 #if NDIM>1
@@ -2048,7 +2048,7 @@ CONTAINS
             coeff_ID(1,8) = -1
             coeff_ID(2:NDIM+1,8) = -1
 
-            vec(:) = vec(:) - coeff(:,7)*rt_radconst*rt_boundary_T**4
+            vec(:) = vec(:) - coeff(:,7)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(1) = vec(1) - coeff(1,8)*frady_boundary_value
             vec(2) = vec(2) - coeff(2,8)*fradx_boundary_value
 #if NDIM>1
@@ -2064,10 +2064,10 @@ CONTAINS
             coeff_ID(2:NDIM+1,11) = -1
             coeff_ID(2:NDIM+1,12) = -1
 
-            vec(1) = vec(1) - coeff(1,12)*rt_radconst*rt_boundary_T**4
+            vec(1) = vec(1) - coeff(1,12)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(1) = vec(1) - coeff(1,13)*fradz_boundary_value
 
-            vec(2:NDIM+1) = vec(2:NDIM+1) - coeff(2:NDIM+1,11)*rt_radconst*rt_boundary_T**4
+            vec(2:NDIM+1) = vec(2:NDIM+1) - coeff(2:NDIM+1,11)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(2) = vec(2) - coeff(2,12)*fradx_boundary_value
 #if NDIM>1
             vec(3) = vec(3) - coeff(3,12)*frady_boundary_value
@@ -2082,7 +2082,7 @@ CONTAINS
           if(which_axis .eq. IAXIS) then
             coeff_ID(1:NDIM+1,5) = -1
             coeff_ID(1:NDIM+1,6) = -1
-            vec(:) = vec(:) - coeff(:,5)*rt_radconst*rt_boundary_T**4
+            vec(:) = vec(:) - coeff(:,5)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(1) = vec(1) - coeff(1,6)*fradx_boundary_value
             vec(2) = vec(2) - coeff(2,6)*fradx_boundary_value
 #if NDIM>1
@@ -2098,10 +2098,10 @@ CONTAINS
             coeff_ID(2:NDIM+1,9) = -1
             coeff_ID(2:NDIM+1,10) = -1
 
-            vec(1) = vec(1) - coeff(1,10)*rt_radconst*rt_boundary_T**4
+            vec(1) = vec(1) - coeff(1,10)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(1) = vec(1) - coeff(1,11)*frady_boundary_value
 
-            vec(2:NDIM+1) = vec(2:NDIM+1) - coeff(2:NDIM+1,9)*rt_radconst*rt_boundary_T**4
+            vec(2:NDIM+1) = vec(2:NDIM+1) - coeff(2:NDIM+1,9)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(2) = vec(2) - coeff(2,10)*fradx_boundary_value
 #if NDIM>1
             vec(3) = vec(3) - coeff(3,10)*frady_boundary_value
@@ -2116,10 +2116,10 @@ CONTAINS
             coeff_ID(2:NDIM+1,13) = -1
             coeff_ID(2:NDIM+1,14) = -1
 
-            vec(1) = vec(1) - coeff(1,15)*rt_radconst*rt_boundary_T**4
+            vec(1) = vec(1) - coeff(1,15)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(1) = vec(1) - coeff(1,16)*fradz_boundary_value
 
-            vec(2:NDIM+1) = vec(2:NDIM+1) - coeff(2:NDIM+1,13)*rt_radconst*rt_boundary_T**4
+            vec(2:NDIM+1) = vec(2:NDIM+1) - coeff(2:NDIM+1,13)*rt_radconst*rt_boundary_T_face(which_boundary,which_axis)**4
             vec(2) = vec(2) - coeff(2,14)*fradx_boundary_value
 #if NDIM>1
             vec(3) = vec(3) - coeff(3,14)*frady_boundary_value
@@ -2373,7 +2373,7 @@ CONTAINS
         delx = cellsize(which_axis)
         !Set boundary radiation field to zero for UV bands; for IR user-set boundary condition
         if(current_band .eq. 'IR') then
-          F_inc = rt_radconst*rt_speedlt/4 *rt_boundary_T**4
+          F_inc = rt_radconst*rt_speedlt/4 *rt_boundary_T_face(which_boundary,which_axis)**4
         else
           !TODO: This can be something else if a backround UV field is required.
           F_inc = 0.0

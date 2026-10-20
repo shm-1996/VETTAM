@@ -1,0 +1,25 @@
+# Configuration File for Krumholz et al 2007a Advecting/Diffusion Pulse Test
+#
+#
+
+REQUIRES Driver
+REQUIRES physics/RadTrans/RadTransMain/VETTAM
+REQUIRES physics/Eos
+REQUIRES Grid
+
+GUARDCELLS 4
+
+D      sim_rhoAmbient     reference density
+D      sim_erAmbient	  reference E_rad
+D      sim_eddvalue	  fixed XXED value
+D      sim_gamma          gamma value
+D      sim_nu             Gaussian std
+D      sim_mu             Gaussian mean 
+PARAMETER sim_rhoAmbient    REAL     1.2e0
+PARAMETER sim_T0   			REAL     1.e7
+PARAMETER sim_T1   			REAL     2.e7
+PARAMETER sim_eddvalue      REAL     0.33
+PARAMETER sim_gamma         REAL     1.67
+PARAMETER sim_nu            REAL     24.0
+PARAMETER sim_vx            REAL     0.0
+

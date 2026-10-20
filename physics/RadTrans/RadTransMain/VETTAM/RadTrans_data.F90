@@ -48,6 +48,8 @@ module RadTrans_data
                   use_hlle_correction, rt_sink_implicit, rt_picard_correction, &
                   rt_sinkheat, rt_sinkmom, rt_ovcterms, noSink_VETTAM
   integer, save :: rt_Dt_type, rt_hydro_type, rt_temp_type
+  !c_v = rt_cv_alpha*T^3, for the closed-form update of rt_temp_type=5
+  real, save    :: rt_cv_alpha
 
   real, save    :: rt_dtFactor, rt_smalle, rt_smallf
   real, save    :: rt_T_min
@@ -62,6 +64,10 @@ module RadTrans_data
   INTEGER, save :: xl_rad_BC, xr_rad_BC, yl_rad_BC, &
                    yr_rad_BC, zl_rad_BC, zr_rad_BC
   INTEGER, save, DIMENSION(2,NDIM) :: rad_BC
+  !Per-face Dirichlet/Marshak boundary temperature, indexed (LOW:HIGH, axis).
+  !Filled in RadTrans_init from the rt_boundary_T_?? parameters, falling back
+  !to rt_boundary_T wherever those are left negative.
+  real, save    :: rt_boundary_T_face(LOW:HIGH, MDIM)
   real, save    :: rt_boundary_T, &
                     fradx_boundary_value, frady_boundary_value, &
                     fradz_boundary_value

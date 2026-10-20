@@ -132,6 +132,7 @@ subroutine RadTrans_init()
     !Picard iteration stuff
     call RuntimeParameters_get("rt_hydro_type",rt_hydro_type)  
     call RuntimeParameters_get("rt_temp_type",rt_temp_type)  
+    call RuntimeParameters_get("rt_cv_alpha",rt_cv_alpha)
     if(rt_hydro_type .gt. 1) then
       call RuntimeParameters_get("rt_picard_rtol",rt_picard_rtol)
       call RuntimeParameters_get("rt_picard_abstol",rt_picard_abstol)
@@ -166,6 +167,16 @@ subroutine RadTrans_init()
 #endif
 #endif 
   call RuntimeParameters_get("rt_boundary_T", rt_boundary_T)
+
+  !Resolve the per-face boundary temperatures. Negative means "not set", in
+  !which case the face inherits the single rt_boundary_T.
+  rt_boundary_T_face(:,:) = rt_boundary_T
+  call rt_getFaceBoundaryT("rt_boundary_T_xl", LOW,  IAXIS)
+  call rt_getFaceBoundaryT("rt_boundary_T_xr", HIGH, IAXIS)
+  call rt_getFaceBoundaryT("rt_boundary_T_yl", LOW,  JAXIS)
+  call rt_getFaceBoundaryT("rt_boundary_T_yr", HIGH, JAXIS)
+  call rt_getFaceBoundaryT("rt_boundary_T_zl", LOW,  KAXIS)
+  call rt_getFaceBoundaryT("rt_boundary_T_zr", HIGH, KAXIS)
 
   call RuntimeParameters_get("fradx_boundary_value", fradx_boundary_value)
 #if NDIM>1  
@@ -207,5 +218,16 @@ subroutine RadTrans_init()
 #endif
 
   return
+
+CONTAINS
+
+  SUBROUTINE rt_getFaceBoundaryT(pname, face, axis)
+    implicit none
+    character(len=*), intent(in) :: pname
+    integer, intent(in) :: face, axis
+    real :: val
+    call RuntimeParameters_get(pname, val)
+    if (val .ge. 0.0) rt_boundary_T_face(face,axis) = val
+  END SUBROUTINE rt_getFaceBoundaryT
 
 end subroutine RadTrans_init
