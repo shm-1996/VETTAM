@@ -203,7 +203,7 @@ subroutine RadTrans_init()
 
 #ifdef RAYTRACE_3DRT
   !Initialise variables for ray-tracer
-  call raytrace_init()
+  call rt_raytrace_init()
 #endif
 
   return

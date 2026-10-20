@@ -1,18 +1,18 @@
-!!****if* source/physics/RadTrans/RadTransMain/VETTAM/RayTrace/raytrace_init.F90
+!!****if* source/physics/RadTrans/RadTransMain/VETTAM/RayTrace/rt_raytrace_init.F90
 !!
 !!  NAME 
 !!
-!!  raytrace_init
+!!  rt_raytrace_init
 !!
 !!  SYNOPSIS
 !!
-!!  call raytrace_init()
+!!  call rt_raytrace_init()
 !!
 !!  DESCRIPTION 
 !!    Initialize local data for the ray-tracer
 !!
 !!***
-subroutine raytrace_init()
+subroutine rt_raytrace_init()
 
   use RadTrans_data, ONLY: rt_meshMe, rt_acrossme
   use raytrace_data
@@ -58,4 +58,4 @@ subroutine raytrace_init()
   call rt_init_raytrace_3drt
 #endif
 
-end subroutine raytrace_init
+end subroutine rt_raytrace_init

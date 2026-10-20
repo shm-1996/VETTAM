@@ -57,7 +57,9 @@ integer, intent(INOUT)  :: dt_minloc(5)
 !! User defined 
 real, dimension(MDIM)   :: cellsize
 integer :: dr_myPE, i,j,k, temploc(5)
-real :: cs2, v_max, rad2, dt_ltemp, dt_temp, delx, tau_i
+real :: cs2, dt_ltemp, dt_temp, delx, tau_i
+real, dimension(MDIM) :: v_max, rad2
+integer :: iax
 #ifdef MAGX_VAR
   real :: va2
 #endif
@@ -105,13 +107,18 @@ CASE(2)
 #endif
 
 !Compute rad contribution
-!TODO: Is the cellsize in delta in IAXIS or other? 
+!The cell optical depth depends on the cell size along the direction whose CFL
+!constraint is being evaluated, so tau (and hence the radiation contribution to
+!the signal speed) is computed per axis. On non-cubic cells a single
+!IAXIS-based tau makes the transverse constraints inconsistent with the cell
+!size they are divided by; on cubic cells all axes give the same value.
+      rad2(:) = 0.0
 #ifdef ERAD_VAR
-      tau_i = solnData(TAUR_VAR,i,j,k) * cellsize(IAXIS)
-      rad2 = (4.0/9.0) * solnData(ERAD_VAR,i,j,k) * (1.0 - exp(-tau_i)) / &
-             solnData(DENS_VAR,i,j,k)
-#else 
-      rad2 = 0.0
+      do iax = 1, NDIM
+        tau_i = solnData(TAUR_VAR,i,j,k) * cellsize(iax)
+        rad2(iax) = (4.0/9.0) * solnData(ERAD_VAR,i,j,k) * (1.0 - exp(-tau_i)) / &
+               solnData(DENS_VAR,i,j,k)
+      end do
 #endif
 
 
@@ -122,19 +129,19 @@ CASE(2)
                solnData(MAGY_VAR,i,j,k)**2 + &
                solnData(MAGZ_VAR,i,j,k)**2 ) / (hy_bref*solnData(DENS_VAR,i,j,k))
        ! fast MHD wave speed
-       v_max = sqrt(cs2 + va2 + rad2)
+       v_max(1:NDIM) = sqrt(cs2 + va2 + rad2(1:NDIM))
 #else
-       v_max = sqrt(cs2 + rad2)
+       v_max(1:NDIM) = sqrt(cs2 + rad2(1:NDIM))
 #endif
 
 
        ! compute minimum timestep based on MHD waves
-       dt_ltemp = cellsize(IAXIS) / (abs(solnData(VELX_VAR,i,j,k)) + v_max)
+       dt_ltemp = cellsize(IAXIS) / (abs(solnData(VELX_VAR,i,j,k)) + v_max(IAXIS))
 #if NDIM >= 2
-       dt_ltemp = min(dt_ltemp, cellsize(JAXIS) / (abs(solnData(VELY_VAR,i,j,k)) + v_max))
+       dt_ltemp = min(dt_ltemp, cellsize(JAXIS) / (abs(solnData(VELY_VAR,i,j,k)) + v_max(JAXIS)))
 #endif
 #if NDIM == 3
-       dt_ltemp = min(dt_ltemp, cellsize(KAXIS) / (abs(solnData(VELZ_VAR,i,j,k)) + v_max))
+       dt_ltemp = min(dt_ltemp, cellsize(KAXIS) / (abs(solnData(VELZ_VAR,i,j,k)) + v_max(KAXIS)))
 #endif
        if (dt_ltemp < dt_temp) then
           dt_temp = dt_ltemp

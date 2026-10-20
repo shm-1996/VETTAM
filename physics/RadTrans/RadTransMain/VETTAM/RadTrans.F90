@@ -10,7 +10,7 @@
 !!  RadTrans(integer(IN) :: blockCount
 !!       integer(IN) :: blockList(blockCount),
 !!          real(IN) :: dt,
-!!          real(IN) :: time)
+!!          integer(IN), optional :: pass)
 !!  
 !! DESCRIPTION
 !!
@@ -25,7 +25,7 @@
 !!  blockCount : The number of blocks in the list
 !!  blockList(:) : The list of blocks on which to apply the cooling operator
 !!  dt : the current timestep
-!!  time : the current time
+!!  pass : optional pass number from the split driver (unused)
 !!
 !!
 !!***
@@ -33,13 +33,13 @@
 #include "Flash.h"
 #include "constants.h"
 #include "petsc/finclude/petscksp.h"
-SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
+SUBROUTINE RadTrans(blockCount_,blockList_,dt,pass)
 
   use RadTrans_data
   use Grid_interface
   use Hydro_data, ONLY: hy_useHydro, hy_cfl
   use Eos_interface
-  use Driver_data, ONLY: dr_globalMe
+  use Driver_data, ONLY: dr_globalMe, dr_simTime
   use Timers_interface, ONLY : Timers_start, Timers_stop
   use RuntimeParameters_interface, ONLY : RuntimeParameters_get
 #ifdef RAYTRACE_3DRT  
@@ -67,15 +67,18 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
 
   integer, intent(IN)                        :: blockCount_
   integer, dimension(blockCount_), intent(IN) :: blockList_
-  real, intent(IN)                           :: dt, time
+  real, intent(IN)                           :: dt
+  integer, intent(IN), optional              :: pass  ! matches the RadTrans API; unused
   integer                                    :: b,blockID, nAllParticles, band_count
   integer,dimension(2,MDIM)                  :: blkLimits, blkLimitsGC
   real,dimension(:,:,:,:),pointer            :: solnData
   logical                                    :: gcmask(NUNK_VARS), gcMaskLogged = .false., resetlog, dust_addsrcterms
   logical, save                              :: doRTDiffuse, directSinkContribution, sink_useRayTrace, firstCall=.true.
+  logical, save                              :: rt_forceFirstUpdate=.true.
   real, save                                 :: tsinceLastCall
   integer, parameter                         :: max_freqbands = 5
   real                                       :: rt_useeverydt, delx_min
+  real                                       :: dt_rad
   
   if(firstCall) then
 
@@ -107,7 +110,7 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
 
 #if defined(IONY_MSCALAR) || defined(H_SPEC)
     !Make this call to initialise some variables in ionise which will be used below
-    call rt_ionise(blockCount_,blockList_,dt,time)
+    call rt_ionise(blockCount_,blockList_,dt,dr_simTime)
 #endif
 
 #ifdef FSHM_VAR
@@ -115,8 +118,9 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
     call rt_lw(blockCount_,blockList_,dt)
 #endif
 
-    !Make time since last call a huge number to ensure that RadTrans is called in the first step
-    tsinceLastCall = 1.e99
+    !Start the accumulator at zero; rt_forceFirstUpdate (below) is what guarantees
+    !that the radiation field is updated on the very first step.
+    tsinceLastCall = 0.0
     firstCall = .false.
   endif !firstCall
 
@@ -149,12 +153,17 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
     rt_useeverydt = hy_cfl * delx_min/rt_dt_maxvel
     !Note: this call is after Petsc_init because you always want Petsc to have up-to-date info on the block structure, even if you don't evolve the radiation field
     tsinceLastCall = tsinceLastCall + dt
-    if(tsinceLastCall .lt. rt_useeverydt) then
+    if(tsinceLastCall .lt. rt_useeverydt .and. .not. rt_forceFirstUpdate) then
       if(dr_globalMe .eq. MASTER_PE) &
         & print *, "Skipping VETTAM since tsinceLastCall", tsinceLastCall, "is less than rt_useeverydt", rt_useeverydt
       call Timers_stop("RadTrans")
       return
     endif
+
+    !Advance the radiation field by the time actually elapsed since the last
+    !VETTAM update.
+    dt_rad = tsinceLastCall
+    rt_forceFirstUpdate = .false.
 
     !Save old time solution for the IR band. UV is time-independent, so this exercise is not required for the UV bands.
     !TODO: Note this is done before looping through the bands since ERAD and MOH vars are recycled across the bands. The fact that IR is done last is crucial for this.
@@ -299,14 +308,14 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
 #ifdef RAYTRACE_3DRT
     ! Allocate memory and/or initialise stuff for RayTrace
     if(doRTDiffuse .or. sink_useRayTrace .or. current_band .eq. 'LYMAN_WERNER' .or. current_band .eq. 'LW' &
-      ) call rt_prepRayTrace(blockCount_, blockList_, dt)
+      ) call rt_prepRayTrace(blockCount_, blockList_, dt_rad)
 #endif
 
     if(current_band .eq. 'LYMAN_WERNER' .or. current_band .eq. 'LW') then
 #ifdef FSHM_VAR
       !If purely using raytrace for LW band, call rt_lw here since the lines of code below are unnecessary
       if(lwdiss_type .eq. 'raytrace') then
-        call rt_lw(blockCount_, blockList_,dt) !This subroutine does the necessary action for the LW band
+        call rt_lw(blockCount_, blockList_,dt_rad) !This subroutine does the necessary action for the LW band
         band_count = band_count -1 !Update for next iteration of do loop
         if(band_count .eq. 0) then
           exit !Exit if all bands completed
@@ -329,14 +338,14 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
         call RadTrans_RayTrace_Sink()
         !Add contribution to gas energy/momentum
         call Timers_start("vet_sinkhydro")
-        call rt_sinkHydro(blockCount_,blockList_,dt)
+        call rt_sinkHydro(blockCount_,blockList_,dt_rad)
         call Timers_stop("vet_sinkhydro")
 #else
         call Driver_abortFlash("sink_useRayTrace is set to true, but RayTrace/SinkRT is not compiled in.")
 #endif
       else
         !Gaussian source term to radiation energy (recommended)
-        call rt_sinkInject(blockCount_,blockList_,dt)
+        call rt_sinkInject(blockCount_,blockList_,dt_rad)
         !Gas energy/momentum contributions handled by rt_hydro_update in this case
       endif
       call Timers_stop("vet_sink")
@@ -391,14 +400,14 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
       gcMaskLogged = .TRUE.
       if(dr_globalMe.eq.MASTER_PE) call Logfile_stamp("Implicit time integration with Petsc Started", "[VETTAM] ")
       call Timers_start("vet_implicit")
-      call Radiation_step(dt)
+      call Radiation_step(dt_rad)
       call Timers_stop("vet_implicit")
       !For ionising radiation solve for the ionisation state
 #ifdef UEUV_VAR
       if(current_band .eq. 'EUV' .or. current_band .eq. 'EUV_13P6_15P2' .or. &
           & current_band .eq. 'EUV_15P2_INFTY') then
         call Timers_start("vet_ionize")
-        call rt_ionise(blockCount_,blockList_,dt,time)
+        call rt_ionise(blockCount_,blockList_,dt_rad,dr_simTime)
         if(dr_globalMe.eq.MASTER_PE)  call Logfile_stamp("Ionization Done","[VETTAM]")
         call Timers_stop("vet_ionize")
       endif
@@ -409,14 +418,14 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
       if(current_band .eq. 'LW' .or. current_band .eq. 'LYMAN_WERNER') then
         !This is the case where lwdiss_type is not "raytrace"; if it is, it never reaches this part of the code
         if(lwdiss_type .eq. 'raytrace') call Driver_abortFlash("lwdiss_type set to raytrace; should not get here")
-        call rt_lw(blockCount_, blockList_,dt) !This subroutine does the necessary action for the LW band
+        call rt_lw(blockCount_, blockList_,dt_rad) !This subroutine does the necessary action for the LW band
       endif
 #endif
 
       if(rt_update_hydro) then
         call Timers_start("vet_picard")
         !Update dust temperature (only applicable for the IR band)
-        if(current_band .eq. 'IR') call rt_dustTemperature(dt)
+        if(current_band .eq. 'IR') call rt_dustTemperature(dt_rad)
         !Flag to add energy/momentum due to dust absorption
         dust_addsrcterms = .true.
 #ifdef UEUV_VAR
@@ -427,7 +436,7 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,time)
 #endif
         ! Now add radiation pressure on dust and energy reprocessing to the IR (for the EUV bands, this is already done in rt_ionMomentum and rt_ionHeatCool)
         if(hy_useHydro .and. dust_addsrcterms) then
-          call rt_dustTerms(dt)
+          call rt_dustTerms(dt_rad)
         endif
         if(dr_globalMe.eq.MASTER_PE)  call Logfile_stamp("Other (dust/radiation pressure) radiation-hydro coupling done","[VETTAM]")
         !Fill guard cells after hydro quantities updated
@@ -470,6 +479,7 @@ end SUBROUTINE RadTrans
 
 SUBROUTINE Radiation_Step(dtstep)
   use RadTrans_data
+  use Grid_interface, ONLY : Grid_getBlkPtr, Grid_releaseBlkPtr
   use Driver_data, ONLY: dr_globalMe
   implicit none
 
@@ -477,9 +487,15 @@ SUBROUTINE Radiation_Step(dtstep)
   type(PetscInt) :: reason
   integer :: rad_substeps, substep_counter
   real :: dt_substep, min_dt_substep
+  integer :: b, blockID, istat
+  real, dimension(:,:,:,:), pointer :: solnData
+  !Storing state at current time
+  real, allocatable :: oldState(:,:,:,:,:)
+  logical :: stateSaved
 
   rad_substeps = 1
   dt_substep = dtstep
+  stateSaved = .false.
   !TODO: Hardcoded for now
   min_dt_substep = dtstep/64.
   do
@@ -487,6 +503,22 @@ SUBROUTINE Radiation_Step(dtstep)
       if(rad_substeps .gt. 1) then 
         if (dr_globalMe .eq. MASTER_PE) write(*, "(A,I0,A,I0)") &
           'Radiation Step Subcycle: ', substep_counter, '/', rad_substeps
+      endif
+      !update old time state
+      if(substep_counter .gt. 1) then
+        do b = 1, blockCount
+          blockID = blockList(b)
+          call Grid_getBlkPtr(blockID,solnData)
+          solnData(ERAO_VAR,:,:,:) = solnData(ERAD_VAR,:,:,:)
+          solnData(MHXO_VAR,:,:,:) = solnData(MOHX_VAR,:,:,:)
+#if NDIM>1
+          solnData(MHYO_VAR,:,:,:) = solnData(MOHY_VAR,:,:,:)
+#if NDIM>2
+          solnData(MHZO_VAR,:,:,:) = solnData(MOHZ_VAR,:,:,:)
+#endif
+#endif
+          call Grid_releaseBlkPtr(blockID,solnData)
+        end do
       endif
       call Petsc_step(dt_substep,reason) !Solve the implicit system (in rt_petsc.F90)
       if(reason .eq. -3) exit
@@ -501,7 +533,59 @@ SUBROUTINE Radiation_Step(dtstep)
       if(dt_substep .lt. min_dt_substep) then
         call Driver_abortFlash('[VETTAM]: Radiation step iteration subcycling limit reached.')
       endif
+      !About to subcycle: stash the old time state
+      if(.not. stateSaved) then
+        allocate(oldState(NDIM+1,blockCount,GRID_ILO_GC:GRID_IHI_GC,&
+          GRID_JLO_GC:GRID_JHI_GC,GRID_KLO_GC:GRID_KHI_GC), stat=istat)
+        if(istat /= 0) call Driver_abortFlash(&
+          '[VETTAM]: Allocation of old-time radiation state for subcycling failed.')
+        do b = 1, blockCount
+          blockID = blockList(b)
+          call Grid_getBlkPtr(blockID,solnData)
+          oldState(1,b,:,:,:) = solnData(ERAO_VAR,:,:,:)
+          oldState(2,b,:,:,:) = solnData(MHXO_VAR,:,:,:)
+#if NDIM>1
+          oldState(3,b,:,:,:) = solnData(MHYO_VAR,:,:,:)
+#if NDIM>2
+          oldState(4,b,:,:,:) = solnData(MHZO_VAR,:,:,:)
+#endif
+#endif
+          call Grid_releaseBlkPtr(blockID,solnData)
+        end do
+        stateSaved = .true.
+      else
+        call RestoreOldTime(oldState)
+      endif
     endif
   end do
+
+  !Undo the chaining so the caller still sees the time-t state in ERAO/MHX0..,
+  !required for the Picard iteration and the SemenovTrad opacities.
+  if(stateSaved) then
+    call RestoreOldTime(oldState)
+    deallocate(oldState)
+  endif
+
+CONTAINS
+
+  SUBROUTINE RestoreOldTime(saved)
+    implicit none
+    real, intent(in) :: saved(:,:,:,:,:)
+    integer :: bb, bID
+    real, dimension(:,:,:,:), pointer :: sData
+    do bb = 1, blockCount
+      bID = blockList(bb)
+      call Grid_getBlkPtr(bID,sData)
+      sData(ERAO_VAR,:,:,:) = saved(1,bb,:,:,:)
+      sData(MHXO_VAR,:,:,:) = saved(2,bb,:,:,:)
+#if NDIM>1
+      sData(MHYO_VAR,:,:,:) = saved(3,bb,:,:,:)
+#if NDIM>2
+      sData(MHZO_VAR,:,:,:) = saved(4,bb,:,:,:)
+#endif
+#endif
+      call Grid_releaseBlkPtr(bID,sData)
+    end do
+  END SUBROUTINE RestoreOldTime
 
 END SUBROUTINE Radiation_Step

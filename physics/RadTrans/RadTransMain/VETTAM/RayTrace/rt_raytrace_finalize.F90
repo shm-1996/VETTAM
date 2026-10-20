@@ -1,12 +1,12 @@
-!!****if* source/physics/RadTrans/RadTransMain/VETTAM/RayTrace/raytrace_finalize
+!!****if* source/physics/RadTrans/RadTransMain/VETTAM/RayTrace/rt_raytrace_finalize
 !!
 !! NAME
 !!
-!!  raytrace_finalize
+!!  rt_raytrace_finalize
 !!
 !! SYNOPSIS
 !!
-!!  call raytrace_finalize ()
+!!  call rt_raytrace_finalize ()
 !!
 !! DESCRIPTION
 !!
@@ -15,7 +15,7 @@
 !! ARGUMENTS
 !!
 !!***
-subroutine raytrace_finalize ()
+subroutine rt_raytrace_finalize ()
 
   implicit none
 #include "Flash.h"
@@ -25,4 +25,4 @@ subroutine raytrace_finalize ()
 #endif
 
   return
-end subroutine raytrace_finalize
+end subroutine rt_raytrace_finalize

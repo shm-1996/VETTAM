@@ -416,7 +416,8 @@ SUBROUTINE CopyResult(X)
   type(PetscScalar), dimension(:), POINTER :: arr
   integer, dimension(MDIM) :: cornerID, stride, Ncell, globalIndexLimits
   INTEGER, EXTERNAL :: localblockindex
-  
+  real :: fred
+
   call VecGetArrayRead(X, arr, ierr)
 
   do b = 1, blockCount
@@ -453,6 +454,15 @@ SUBROUTINE CopyResult(X)
           
 #endif
 #endif
+          !Enforce magnitude of flux is limited (|F| <= cE; retaining direction of flux)
+          fred = sqrt(solnData(MOHX_VAR,i,j,k)**2 + solnData(MOHY_VAR,i,j,k)**2 + solnData(MOHZ_VAR,i,j,k)**2)
+          fred = fred/(solnData(ERAD_VAR,i,j,k)*rt_speedlt)
+          if(solnData(ERAD_VAR,i,j,k) .gt. 0.0 .and. fred .gt. 1.0) then
+            solnData(MOHX_VAR,i,j,k) = solnData(MOHX_VAR,i,j,k)/fred
+            solnData(MOHY_VAR,i,j,k) = solnData(MOHY_VAR,i,j,k)/fred
+            solnData(MOHZ_VAR,i,j,k) = solnData(MOHZ_VAR,i,j,k)/fred
+          endif
+
           !If current band is EUV, store the volumetric rate of absorbed EUV photons
 #ifdef UEUV_VAR
           !Stores energy absorbed per unit area per unit volume by the gas -- used to compute ionisation rate
@@ -539,7 +549,8 @@ SUBROUTINE CopyResult(X)
             solnData(B5FZ_VAR,i,j,k) = solnData(MOHZ_VAR,i,j,k)
 #endif
           else
-            call Driver_abortFlash("[rt_petsc]: current_band >3; Maximum bands is set to 3.")
+            call Driver_abortFlash("[rt_petsc]: current_band does not match any of rt_band1-rt_band5. &
+                                 & Check rt_freqbands and band name parameters.")
           endif
 
         end do
@@ -567,7 +578,7 @@ SUBROUTINE CopyGuess(X)
   integer, dimension(MDIM) :: cornerID, stride, Ncell, globalIndexLimits
   INTEGER, EXTERNAL :: localblockindex
 
-  call VecGetArrayRead(X, arr, ierr)
+  call VecGetArray(X, arr, ierr)
   CHKERRA(ierr)
   do b = 1, blockCount
     blockID = blockList(b)
@@ -605,7 +616,7 @@ SUBROUTINE CopyGuess(X)
     call Grid_releaseBlkPtr(blockID,solnData)
   end do
 
-  call VecRestoreArrayRead(X, arr, ierr)
+  call VecRestoreArray(X, arr, ierr)
 END SUBROUTINE CopyGuess
 
 SUBROUTINE InitNeghLevels()

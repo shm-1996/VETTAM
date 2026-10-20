@@ -158,7 +158,7 @@ SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
       thermpionH2 = 0.0
     else if (current_band .eq.'EUV_15P2_INFTY') then
       lum_weighted_thermpionH = lum_weighted_thermpionH + lum_sink * particles_global(THERMPION_15P2_INFTY_PART_PROP,p)
-      lum_weighted_thermpionH2 = lum_weighted_thermpionH + lum_sink * particles_global(THERMPION_15P2_INFTY_H2_PART_PROP,p)
+      lum_weighted_thermpionH2 = lum_weighted_thermpionH2 + lum_sink * particles_global(THERMPION_15P2_INFTY_H2_PART_PROP,p)
       thermpionH = particles_global(THERMPION_15P2_INFTY_PART_PROP,p)
       thermpionH2 = particles_global(THERMPION_15P2_INFTY_H2_PART_PROP,p)
     endif
@@ -223,9 +223,15 @@ SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
       sizeX = blkLimitsGC(HIGH,IAXIS)-blkLimitsGC(LOW,IAXIS) + 1
       sizeY = blkLimitsGC(HIGH,JAXIS)-blkLimitsGC(LOW,JAXIS) + 1
       sizeZ = blkLimitsGC(HIGH,KAXIS)-blkLimitsGC(LOW,KAXIS) + 1
+      if (allocated(x)) deallocate(x)
+      if (allocated(y)) deallocate(y)
+      if (allocated(z)) deallocate(z)
       allocate(x(sizeX), stat=istat)
+      if (istat /= 0) call Driver_abortFlash("[rt_sinkInject]: Allocation of x coordinate array failed.")
       allocate(y(sizeY), stat=istat)
+      if (istat /= 0) call Driver_abortFlash("[rt_sinkInject]: Allocation of y coordinate array failed.")
       allocate(z(sizeZ), stat=istat)
+      if (istat /= 0) call Driver_abortFlash("[rt_sinkInject]: Allocation of z coordinate array failed.")
       call Grid_getCellCoords(KAXIS, blockId, CENTER, .true., z, sizeZ)
       call Grid_getCellCoords(JAXIS, blockId, CENTER, .true., y, sizeY)
       call Grid_getCellCoords(IAXIS, blockId, CENTER, .true., x, sizeX)
