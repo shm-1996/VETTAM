@@ -90,6 +90,7 @@ declared in their own `Config` files, so they are spelled out here:
 | `PhotoIonization/ThermoChemistry` | EUV photoionization writing rates for a chemistry network | Multispecies `H`, `HP`, `ELEC` (and `H2` for H2 ionization). This is the `PhotoIonization` Config default, and it `REQUESTS` KROME |
 | `LWBand/Manual` | Lyman-Werner H2 dissociation, computed in-module | `RayTrace/`, `PhotoIonization/` with Multispecies `H` + `H2`, and the sink unit with `StellarEvolution` |
 | `LWBand/PrimKrome`, `LWBand/MetalKrome` | LW rates handed to a KROME network | As `LWBand/Manual`, plus KROME |
+| `LinTempUpdate/` | Replaces the outer Picard/Newton-Raphson temperature iteration with a fully coupled linearised solve: the gas temperature becomes an extra matrix unknown and the `a_r T^4` emission is linearised about `T^n`. `rt_hydro_type` and `rt_temp_type` are inert in that build | Nothing beyond the core. It overrides `rt_dustTemperature.F90`, `rt_fillMatrix.F90` and `rt_petsc.F90`, so pull it in on the setup line with `-unit=physics/RadTrans/RadTransMain/VETTAM/LinTempUpdate` |
 
 KROME is not distributed with this release. Without it, use `PhotoIonization/OnlyH`,
 which needs nothing beyond the core:
@@ -125,15 +126,15 @@ cd /path/to/flash/source/Simulation/SimulationMain/unitTest/VETTAM
 | `diffusion` | the analytic spreading Gaussian at two optical depths, plus a guard that the answer does not depend on how often the update gate fires |
 | `marshak` | Su & Olson (1996) Marshak wave tables |
 | `radshock` | Lowrie & Edwards (2008) `M = 3` radiation shock |
-| `radtempeq` | gas-radiation equilibration over 20 decades in the radiation-to-gas energy ratio |
+| `radtempeq` | gas-radiation equilibration over 20 decades in the radiation-to-gas energy ratio, in both the Picard/Newton-Raphson and linearised builds |
 | `advection` | dynamic diffusion, Krumholz et al. (2007). Hours; `--full` |
 
 `numpy` and `h5py` only — not yt. `matplotlib` is needed for `--plots` and is imported
 lazily. See that directory's `README` for tolerances and what each test pins down.
 
-The suite also registers `radtempeq_lin`, which repeats the equilibration problem against
-the `LinTempUpdate` solver variant. That variant is not part of this release, so the test
-reports itself as skipped rather than failing.
+`radtempeq_lin` repeats the equilibration problem against the `LinTempUpdate` variant, so
+the two independent discretisations are measured against the same analytic equilibrium. A
+test whose optional sub-unit is not installed reports itself skipped rather than failing.
 
 ## Documentation
 
