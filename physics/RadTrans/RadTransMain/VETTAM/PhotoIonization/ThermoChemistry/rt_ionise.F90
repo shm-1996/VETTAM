@@ -207,7 +207,7 @@ SUBROUTINE rt_ionise(blockCount_,blockList_,dt,time)
     if(hy_useHydro) then 
       call rt_ionMomentum(blockCount_,blockList_,dt,time)
 #ifdef REIR_VAR
-      if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt,time)
+      if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,1.0,time)
 #endif
     endif
     !Now do the solution for the 13P6 band
@@ -223,7 +223,7 @@ SUBROUTINE rt_ionise(blockCount_,blockList_,dt,time)
   if(hy_useHydro) then 
     call rt_ionMomentum(blockCount_,blockList_,dt,time)
 #ifdef REIR_VAR
-    if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt,time)
+    if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,1.0,time)
 #endif
   endif
 

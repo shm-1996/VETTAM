@@ -1,8 +1,11 @@
-D Variable storing the absorbed energy in LW band by dust (for the PE heating rate, and for subsequent self-shielded H2, CO and C dissociation/ionization)
+D Radiation energy density (erg cm^-3) in the LW band, sinks + background (KROME chi_FUV and dust heating)
 VARIABLE ULWD
 
-D Variable storing the absorbed energy in the PE band by dust (for the PE heating rate)
+D Radiation energy density (erg cm^-3) in the PE band, sinks + background (KROME chi_FUV and dust heating)
 VARIABLE UPED
+
+D Unattenuated stellar LW+PE flux (erg s^-1 cm^-2), sum over sinks of L/(4 pi r^2); KROME uses it for chi0 and Av
+VARIABLE UVF0
 
 D Variable storing the shielded dissociation rate of H2
 VARIABLE DIH2
@@ -12,3 +15,7 @@ VARIABLE IC
 
 D Variable storing the shielded dissociation rate of CO
 VARIABLE DICO
+
+D Maximum local shielding length (cm) for lwdiss_type = "noraytrace", where L = rho/|grad rho| (also used if grad rho = 0);
+D values <= 0 use the smallest domain extent
+PARAMETER   lw_lshield_max  REAL    -1.0

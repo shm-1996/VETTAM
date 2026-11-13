@@ -20,7 +20,8 @@ SUBROUTINE rt_ionMomentum(blockCount_,blockList_,dt,time)
   use rt_ionisemodule
   use Grid_interface
   use Eos_interface
-  use RadTrans_data, ONLY: rt_speedlt, current_band, rt_band1, rt_band2, rt_band3
+  use RadTrans_data, ONLY: rt_speedlt, current_band, rt_band1, rt_band2, rt_band3, &
+                           rt_nonthermal_sputter, rt_sputter_pratio
 
   implicit none
 
@@ -31,6 +32,7 @@ SUBROUTINE rt_ionMomentum(blockCount_,blockList_,dt,time)
   integer :: b, blockID, i, j, k, error
   real, dimension(:,:,:,:), pointer :: solnData
   real :: opac_total, ekin_old, ekin_new, mohx, mohy, mohz, d_ekin, dMomx, dMomy, dMomz
+  real :: prad_ratio
   do b = 1, blockCount_
     blockID = blockList_(b)
     call Grid_getBlkIndexLimits(blockID,blkLimits,blkLimitsGC)
@@ -144,7 +146,23 @@ SUBROUTINE rt_ionMomentum(blockCount_,blockList_,dt,time)
 
 
           
-          !Momentum gain 
+          !Non-thermal sputtering (see rt_dustTerms): where P_rad/P_gas > rt_sputter_pratio
+          !the grains are destroyed, so only the H photoionization opacity imparts momentum
+#if defined(PRES_VAR) && defined(TAUH_VAR)
+          if(rt_nonthermal_sputter) then
+            prad_ratio = mohx**2
+#if NDIM>1
+            prad_ratio = prad_ratio + mohy**2
+#if NDIM>2
+            prad_ratio = prad_ratio + mohz**2
+#endif
+#endif
+            prad_ratio = sqrt(prad_ratio)/rt_speedlt/max(solnData(PRES_VAR,i,j,k), tiny(1.0))
+            if(prad_ratio .gt. rt_sputter_pratio) opac_total = solnData(TAUH_VAR,i,j,k)
+          endif
+#endif
+
+          !Momentum gain
           dMomx = dMomx + dt * opac_total * mohx/rt_speedlt
 #if NDIM>1
           dMomy = dMomy + dt * opac_total * mohy/rt_speedlt

@@ -7,7 +7,8 @@
 !!
 !!  blockCount : The number of blocks in the list
 !!  blockList(:) : The list of blocks
-!!  dt : the current timestep
+!!  dtfrac : fraction of the radiation step covered by this call (dt_substep/dt; 1 without substeps).
+!!           REIR is the absorption rate averaged over the radiation step (erg cm^-3 s^-1).
 !!  time : the current time
 !!
 !!
@@ -17,7 +18,7 @@
 #include "constants.h"
 
 #ifdef REIR_VAR
-SUBROUTINE rt_ionDustRep(blockCount_,blockList_,dt,time)
+SUBROUTINE rt_ionDustRep(blockCount_,blockList_,dtfrac,time)
   use rt_ionisedata
   use rt_ionisemodule
   use Grid_interface
@@ -28,7 +29,7 @@ SUBROUTINE rt_ionDustRep(blockCount_,blockList_,dt,time)
 
   integer, intent(IN)                        :: blockCount_
   integer, dimension(blockCount_), intent(IN) :: blockList_
-  real, intent(IN)                           :: dt, time
+  real, intent(IN)                           :: dtfrac, time
   integer, dimension(2,MDIM) :: blkLimits, blkLimitsGC
   integer :: b, blockID, i, j, k
   real, dimension(:,:,:,:), pointer :: solnData
@@ -72,7 +73,7 @@ SUBROUTINE rt_ionDustRep(blockCount_,blockList_,dt,time)
           !Opacity due to dust alone
           opac_dust = solnData(TAUP_VAR,i,j,k) - solnData(TAUH_VAR,i,j,k)
           solnData(REIR_VAR,i,j,k) = solnData(REIR_VAR,i,j,k) + &
-            & opac_dust * rt_speedlt * erad * dt
+            & opac_dust * rt_speedlt * erad * dtfrac
         end do
       end do
     end do

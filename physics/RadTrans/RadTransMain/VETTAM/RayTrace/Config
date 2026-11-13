@@ -30,6 +30,16 @@ PARAMETER rt_nTheta         INTEGER 1
 D the number of angle groups for communication 
 PARAMETER rt_nrOfAngleGroups  INTEGER  1
 
+D rt_needOnlyFaces TRUE: each rank receives only the remote block face values its rays read
+D (geometric need sets, MPI_Alltoallv); FALSE: legacy MPI_ALLGATHER of all face values.
+D Forced to FALSE (with a warning) if any domain boundary is periodic.
+PARAMETER rt_needOnlyFaces BOOLEAN TRUE
+
+D rt_debugChecksum TRUE: at the end of every ray-tracer call the master rank writes a line
+D "[checksum]" to raytrace_00000.log with an exact, order-independent checksum (sums of the
+D IEEE bit-pattern halves over all interior leaf cells and ranks) of each field the tracer writes
+PARAMETER rt_debugChecksum BOOLEAN FALSE
+
 D rt_healpix_randomize Randomize the healpix sphere orientation every nth call of the raytracer. 0 = No randomization
 PARAMETER rt_healpix_randomize INTEGER 1
 

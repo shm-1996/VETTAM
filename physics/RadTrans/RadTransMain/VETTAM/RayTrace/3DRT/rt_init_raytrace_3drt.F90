@@ -19,12 +19,14 @@ subroutine rt_init_raytrace_3drt
 
   use RadTrans_hybridCharModule, ONLY : io, io_sour, io_conv, getAngles
   use raytrace_data, ONLY : rt_maxNrOfBoundIter, rt_nrOfAngleGroups, rt_dirX, rt_dirY, rt_dirZ, &
-                      rt_healpix_nSide, rt_nPhi, rt_nTheta, allocGeneration
+                      rt_healpix_nSide, rt_nPhi, rt_nTheta, allocGeneration, &
+                      rt_needOnlyFaces
   use rt_data_raytrace_3drt
   use RuntimeParameters_interface, ONLY : RuntimeParameters_get
   use Grid_data, ONLY : gr_globalDomain, gr_domainBC
   use Driver_data, ONLY : dr_globalMe
   use Driver_interface, ONLY : Driver_abortFlash
+  use Logfile_interface, ONLY : Logfile_stampMessage
   implicit none
 
 #include "Flash.h"
@@ -71,6 +73,21 @@ subroutine rt_init_raytrace_3drt
      endif
   endif
   !
+  !
+  !    The need-only face exchange (rt_faceComm) does not follow rays that wrap
+  !    around periodic boundaries; fall back to the full MPI_ALLGATHER of faces.
+  !
+  if(rt_needOnlyFaces .and. (x_periodic.or.y_periodic.or.z_periodic)) then
+     rt_needOnlyFaces = .false.
+     if(dr_globalMe.eq.MASTER_PE) then
+        write(io,*) 'WARNING: periodic boundaries detected: rt_needOnlyFaces is not supported'
+        write(io,*) 'with periodic boundaries; using the full face all-gather instead.'
+        write(*,*)  'WARNING: periodic boundaries detected: rt_needOnlyFaces = .false.', &
+                    ' (falling back to the full ray-tracer face all-gather)'
+     endif
+     call Logfile_stampMessage('[3DRT] WARNING: periodic boundaries detected; '// &
+          'rt_needOnlyFaces set to .false. (full face all-gather)')
+  endif
   if(x_periodic.or.y_periodic.or.z_periodic) then
      nrOfBoundIter = rt_maxNrOfBoundIter
   else

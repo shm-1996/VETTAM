@@ -109,6 +109,10 @@ subroutine RadTrans_init()
   !O(v/c) terms correction flag
   call RuntimeParameters_get("rt_ovcterms",rt_ovcterms)
 
+  !Non-thermal sputtering: no dust radiation force where P_rad/P_gas > rt_sputter_pratio
+  call RuntimeParameters_get("rt_nonthermal_sputter",rt_nonthermal_sputter)
+  call RuntimeParameters_get("rt_sputter_pratio",rt_sputter_pratio)
+
   !Hydro
   call RuntimeParameters_get("rt_update_hydro",rt_update_hydro)  
 

@@ -35,7 +35,8 @@ SUBROUTINE rt_dustTerms(dt)
   real             :: cellsize(MDIM)
   integer          :: b,blockID
   integer          :: i,j,k,l 
-  real             :: d1x,d1y,d1z,d2,opac_planck,opac_rosseland 
+  real             :: d1x,d1y,d1z,d2,opac_planck,opac_rosseland
+  real             :: prad_ratio
   integer, dimension(2,MDIM) :: blkLimits, blkLimitsGC
   real, dimension(:,:,:,:), pointer :: solnData
 
@@ -78,21 +79,22 @@ SUBROUTINE rt_dustTerms(dt)
 #endif
 
 #ifdef REIR_VAR
-          !Accumulate the energy absorbed by dust in all bands bluer than the IR by assuming it is re-emitted in the IR completely
-          if(current_band .ne. 'IR') solnData(REIR_VAR,i,j,k) = solnData(REIR_VAR,i,j,k) + opac_planck * rt_speedlt * solnData(ERAD_VAR,i,j,k) * dt
+          !Accumulate the rate per volume (erg cm^-3 s^-1) at which dust absorbs energy in all bands bluer than the IR,
+          !assumed to be re-emitted in the IR completely (rt_fillMatrix multiplies by dt; KROME heats dust with it)
+          if(current_band .ne. 'IR') solnData(REIR_VAR,i,j,k) = solnData(REIR_VAR,i,j,k) + opac_planck * rt_speedlt * solnData(ERAD_VAR,i,j,k)
 #endif
-          !Photoelectric band: the absorbed energy is stored since it will be used by KROME for PE heating of gas
+          !PE and LW bands: store the radiation energy density (erg cm^-3) of the band, which KROME converts to a
+          !mean intensity J = U c/(4pi) (chi_FUV for PE heating, and the stellar FUV field). The diffuse background
+          !ray-trace (RayTrace_LW_diffuse) adds its energy density to the same containers afterwards.
 #ifdef UPED_VAR
-          if(current_band .eq. 'PE') then 
-          !Accumulate the energy absorbed by dust in the PE band
-            solnData(UPED_VAR,i,j,k) = solnData(UPED_VAR,i,j,k) + opac_planck * rt_speedlt * solnData(ERAD_VAR,i,j,k) * dt
+          if(current_band .eq. 'PE') then
+            solnData(UPED_VAR,i,j,k) = solnData(ERAD_VAR,i,j,k)
           endif
 #endif
 
-          !LW band: the absorbed energy (by dust) is stored since it will be used for photodiassociation of H2, CO and C ionization; and for PE heating by dust
 #ifdef ULWD_VAR
-          if(current_band .eq. 'LW' .or. current_band .eq. 'LYMAN_WERNER') then 
-            solnData(ULWD_VAR,i,j,k) = solnData(ULWD_VAR,i,j,k) + opac_planck * rt_speedlt * solnData(ERAD_VAR,i,j,k) * dt
+          if(current_band .eq. 'LW' .or. current_band .eq. 'LYMAN_WERNER') then
+            solnData(ULWD_VAR,i,j,k) = solnData(ERAD_VAR,i,j,k)
           endif
 #endif
 
@@ -148,7 +150,31 @@ SUBROUTINE rt_dustTerms(dt)
 #endif
           endif
 
-        ! Update Gas velocities now. 
+          !Non-thermal sputtering (Kim et al. 2023, App. D): grains drift at v_d with
+          !s = v_d/sqrt(2kT/m_H) ~ sqrt(P_rad/P_gas); above s^2 = rt_sputter_pratio
+          !(v_d ~ 150 km/s) they are destroyed, so the dust radiation force is omitted.
+          !P_rad = |F|/c of the current band only, a lower bound on the total.
+          !Not applied to the IR band: the criterion assumes <Q_pr> ~ 1, which holds for UV
+          !but not IR, so IR cannot drive grains to sputtering drift velocities.
+#ifdef PRES_VAR
+          if(rt_nonthermal_sputter .and. current_band .ne. 'IR') then
+            prad_ratio = solnData(MOHX_VAR,i,j,k)**2
+#if NDIM>1
+            prad_ratio = prad_ratio + solnData(MOHY_VAR,i,j,k)**2
+#if NDIM>2
+            prad_ratio = prad_ratio + solnData(MOHZ_VAR,i,j,k)**2
+#endif
+#endif
+            prad_ratio = sqrt(prad_ratio)/rt_speedlt/max(solnData(PRES_VAR,i,j,k), tiny(1.0))
+            if(prad_ratio .gt. rt_sputter_pratio) then
+              dMomx = 0.0
+              dMomy = 0.0
+              dMomz = 0.0
+            endif
+          endif
+#endif
+
+        ! Update Gas velocities now.
         
         solnData(VELX_VAR,i,j,k) = solnData(VELX_VAR,i,j,k) + dMomx/solnData(DENS_VAR,i,j,k)
 #if NDIM>1

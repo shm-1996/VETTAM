@@ -65,6 +65,9 @@ subroutine calc_local_block_contributions_3DRT( &
 #include "Flash.h"
 #include "constants.h"
 
+#ifdef ERAD_VAR
+  use RadTrans_data, ONLY: rt_hydro_type
+#endif
 !
   implicit none
 !
@@ -87,6 +90,8 @@ subroutine calc_local_block_contributions_3DRT( &
   REAL :: ttemp
   REAL, DIMENSION(NDIM) :: b0c, b1c
   real :: length, dtaucell, lcontrib
+  integer, dimension(NDIM) :: vox
+  integer :: ovar
 #ifdef DEBUG_RT
   logical :: printval
   REAL,DIMENSION(NDIM) :: target_point
@@ -319,6 +324,30 @@ subroutine calc_local_block_contributions_3DRT( &
     ! normalize by ray length in units of number of  cells at highest refinement
     ! level
     taud = taud*levelFact/length
+  end if
+
+  ! A face node on a block edge can be reached by the ray only at the node itself (it lies on the
+  ! block's silhouette as seen along the ray), so tau/length is 0/0 and nothing is integrated. Use the
+  ! limits, the opacity and source function of the adjacent active cell, rather than 0, which would
+  ! make the interpolation in create_cut_block_list_3DRT underestimate rays clipping the block near
+  ! that edge. Integer coordinates here are cell centres; active cells are b0+2 .. b1-2.
+  if(face.ne.0 .and. length.le.0.0) then
+    if(lw) then
+      ovar = OPAC_VAR
+    else
+#ifdef ERAD_VAR
+      if(rt_hydro_type .eq. 1) then
+        ovar = TAUR_VAR
+      else
+        ovar = TAUP_VAR
+      endif
+#else
+      ovar = TAUP_VAR
+#endif
+    endif
+    vox = MIN(MAX(NINT(x1), b0+2), b1-2) + NGUARD - 1
+    taud = solnData(ovar,vox(1),vox(2),vox(3)) * rescale_inv(1) * levelFact
+    intensity = solnData(SOUR_VAR,vox(1),vox(2),vox(3))
   end if
 
 !  if(.not.face.and.dir(3).gt.0.) then

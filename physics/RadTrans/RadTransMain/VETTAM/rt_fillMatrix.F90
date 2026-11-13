@@ -297,9 +297,9 @@ SUBROUTINE rt_fillMatrix(dt)
 #ifdef JSTR_VAR
           vec(1) = vec(1) + solnData(JSTR_VAR,i,j,k)*dt
 #endif
-          !REIR is already multiplied by time, so no dt required here
+          !REIR is the rate per volume at which dust absorbs energy in the bluer bands (erg cm^-3 s^-1)
 #ifdef REIR_VAR
-          if(current_band .eq. 'IR') vec(1) = vec(1) + solnData(REIR_VAR,i,j,k)
+          if(current_band .eq. 'IR') vec(1) = vec(1) + solnData(REIR_VAR,i,j,k)*dt
 #endif
           !Set VecIDs
           vecID(1) = coeff_ID(1,3)

@@ -13,8 +13,10 @@ REQUIRES physics/RadTrans/RadTransMain/VETTAM/RayTrace
 D flag to use ionising radiation module
 PARAMETER useH2Dissociate   BOOLEAN  TRUE
 
-D H2 dissociation type
-PARAMETER lwdiss_type  STRING  "raytrace"
+D H2 dissociation type: "raytrace" (dust + line shielding from sink ray-tracing), "hybrid" (dust-attenuated flux from
+D the moment solve, line shielding from sink ray-tracing), "noraytrace" (dust-attenuated flux from the moment solve,
+D local line shielding with L = rho/|grad rho|; MetalKrome only)
+PARAMETER lwdiss_type  STRING  "raytrace" ["raytrace", "hybrid", "noraytrace"]
 
 D Doppler b parameter used in fshield equation in units of km/s (see Draine and Bertoldi 1996); default value of 1
 PARAMETER   bfive   REAL    1.0 

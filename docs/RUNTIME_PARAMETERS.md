@@ -24,7 +24,8 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 | `rt_smalle` | Real | `0.0` | lower limit for erad |
 | `rt_smallf` | Real | `1.e-20` | lower limit for frad |
 | `rt_hydro_type` | Integer | `2` | Temperature update type: 1=LTE, 2=Picard Iteration |
-| `rt_temp_type` | Integer | `1` | Temperature update type: 1=Newton Rhapson, 2=Linearised, 3: Quartic |
+| `rt_temp_type` | Integer | `1` | Temperature update type: 1=Newton Rhapson, 2=Linearised, 3: Quartic, 4: Explicit, 5: closed form for c_v = rt_cv_alpha*T^3 (Su & Olson) |
+| `rt_cv_alpha` | Real | `-1.0` | Coefficient alpha in a specific heat of the form c_v = alpha*T^3, used by rt_temp_type=5. That form makes the gas-radiation exchange solvable in closed form, which is how the Su & Olson / Marshak wave benchmark is posed. Negative, the default, means unset; a simulation may also assign rt_cv_alpha directly in Simulation_init, since RadTrans_init runs first. |
 | `rt_picard_rtol` | Real | `1.e-3` | Picard iteration rtol |
 | `rt_picard_abstol` | Real | `1.e-10` | Picard iteration rtol |
 | `rt_picard_maxits` | Integer | `1000` | Picard iteration maxsteps |
@@ -36,6 +37,8 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 | `rt_sink_implicit` | Boolean | `FALSE` | Implicit Sink Heating |
 | `rt_picard_correction` | Boolean | `TRUE` | Picard temp correction |
 | `rt_ovcterms` | Boolean | `TRUE` | O(v/c) correction terms flag |
+| `rt_nonthermal_sputter` | Boolean | `TRUE` | rt_nonthermal_sputter Omit the dust radiation force where grains are destroyed by non-thermal sputtering, i.e. where P_rad/P_gas > rt_sputter_pratio (Kim et al. 2023, App. D) |
+| `rt_sputter_pratio` | Real | `50.0` | rt_sputter_pratio P_rad/P_gas above which grains are sputtered; s^2 at the drift velocity of ~100 km/s |
 | `noSink_VETTAM` | Boolean | `TRUE` | Flag whether to use VETTAM when there are no sink particles |
 | `rt_dt_maxvel` | Real | `3.e10` | Parameters to control frequency of VETTAM (only use rt every dt = cfl*dx/rt_dt_maxvel; default is to resolve the light speed) |
 | `xl_rad_BC` | Integer | `2` | boundary condition: 1=Reflecting, 2=Outflow, 3=Fixed, 4=Periodic, 5=Vacuum, 6=Marshak |
@@ -46,6 +49,12 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 | `zr_rad_BC` | Integer | `2` | -- |
 | `rt_update_hydro` | Boolean | `TRUE` | Update hydro quantites after radiation update |
 | `rt_boundary_T` | Real | `10.` | boundary condition, fixed boundary radiation temperature |
+| `rt_boundary_T_xl` | Real | `-1.0` | Per-face override of rt_boundary_T for the Dirichlet (rad_BC=3) and Marshak (rad_BC=6) boundaries. A negative value, the default, means "use rt_boundary_T". Needed where the two ends of the domain sit at different radiation temperatures, as in the Lowrie & Edwards radiation shock. |
+| `rt_boundary_T_xr` | Real | `-1.0` | -- |
+| `rt_boundary_T_yl` | Real | `-1.0` | -- |
+| `rt_boundary_T_yr` | Real | `-1.0` | -- |
+| `rt_boundary_T_zl` | Real | `-1.0` | -- |
+| `rt_boundary_T_zr` | Real | `-1.0` | -- |
 | `fradx_boundary_value` | Real | `0.0` | boundary condition, fixed boundary radiation flux |
 | `frady_boundary_value` | Real | `0.0` | -- |
 | `fradz_boundary_value` | Real | `0.0` | -- |
@@ -85,14 +94,14 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 | `yzed` | variable | -- |
 | `zzed` | variable | -- |
 | `jstr` | variable | Source term for sink radiation |
-| `reir` | variable | Reprocessed radiation to IR from higher energy radiation |
+| `reir` | variable | Rate per volume at which dust absorbs radiation in bands bluer than the IR, re-emitted in the IR (erg cm^-3 s^-1) |
 
 ## `physics/RadTrans/RadTransMain/VETTAM/LWBand/Config`
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `useH2Dissociate` | Boolean | `TRUE` | flag to use ionising radiation module |
-| `lwdiss_type` | String | `"raytrace"` | H2 dissociation type |
+| `lwdiss_type` | String | `"raytrace"` | H2 dissociation type: "raytrace" (dust + line shielding from sink ray-tracing), "hybrid" (dust-attenuated flux from the moment solve, line shielding from sink ray-tracing), "noraytrace" (dust-attenuated flux from the moment solve, local line shielding with L = rho/|grad rho|; MetalKrome only) |
 | `bfive` | Real | `1.0` | Doppler b parameter used in fshield equation in units of km/s (see Draine and Bertoldi 1996); default value of 1 |
 | `fpump` | Real | `6.94` | The parameter fpump that quantifies the probability of UV pumping vs dissociation; Eq 45 of Baczynski et al 2015 |
 | `energyPerDissociation` | Real | `6.408705848000027e-13` | The thermal energy deposited per photodissociation event; using 0.4 eV by default (Black & Dalgarno 1977) |
@@ -107,10 +116,15 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 
 ## `physics/RadTrans/RadTransMain/VETTAM/LWBand/MetalKrome/Config`
 
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `lw_lshield_max` | Real | `-1.0` | Maximum local shielding length (cm) for lwdiss_type = "noraytrace", where L = rho/|grad rho| (also used if grad rho = 0); values <= 0 use the smallest domain extent |
+
 | Variable | Kind | Description |
 | --- | --- | --- |
-| `ulwd` | variable | Variable storing the absorbed energy in LW band by dust (for the PE heating rate, and for subsequent self-shielded H2, CO and C dissociation/ionization) |
-| `uped` | variable | Variable storing the absorbed energy in the PE band by dust (for the PE heating rate) |
+| `ulwd` | variable | Radiation energy density (erg cm^-3) in the LW band, sinks + background (KROME chi_FUV and dust heating) |
+| `uped` | variable | Radiation energy density (erg cm^-3) in the PE band, sinks + background (KROME chi_FUV and dust heating) |
+| `uvf0` | variable | Unattenuated stellar LW+PE flux (erg s^-1 cm^-2), sum over sinks of L/(4 pi r^2); KROME uses it for chi0 and Av |
 | `dih2` | variable | Variable storing the shielded dissociation rate of H2 |
 | `ic` | variable | Variable storing the shielded ionization rate of Carbon |
 | `dico` | variable | Variable storing the shielded dissociation rate of CO |
@@ -190,6 +204,8 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 | `rt_nPhi` | Integer | `1` | -- |
 | `rt_nTheta` | Integer | `1` | -- |
 | `rt_nrOfAngleGroups` | Integer | `1` | the number of angle groups for communication |
+| `rt_needOnlyFaces` | Boolean | `TRUE` | rt_needOnlyFaces TRUE: each rank receives only the remote block face values its rays read (geometric need sets, MPI_Alltoallv); FALSE: legacy MPI_ALLGATHER of all face values. Forced to FALSE (with a warning) if any domain boundary is periodic. |
+| `rt_debugChecksum` | Boolean | `FALSE` | rt_debugChecksum TRUE: at the end of every ray-tracer call the master rank writes a line "[checksum]" to raytrace_00000.log with an exact, order-independent checksum (sums of the IEEE bit-pattern halves over all interior leaf cells and ranks) of each field the tracer writes |
 | `rt_healpix_randomize` | Integer | `1` | rt_healpix_randomize Randomize the healpix sphere orientation every nth call of the raytracer. 0 = No randomization |
 | `rt_maxNrOfBoundIter` | Integer | `0` | max number of periodic boundary conditions iterations |
 | `rt_dirX` | Real | `1.0` | -- |
@@ -207,7 +223,7 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `opac_floor` | Real | `1.e-5` | -- |
-| `dust_opacity_ir` | String | `"Semenov"` | Flag for opacities. Values possible: "Semenov", "Fixed". |
+| `dust_opacity_ir` | String | `"Semenov"` | Flag for opacities. Values possible: "Semenov", "ScatSemenov", "SemenovTrad", "ScatSemenovTrad", "Fixed", "Scattering", "Constant". "Fixed" and "Scattering" treat the value as a specific opacity and multiply by density; "Constant" treats it as a total extinction coefficient and does not. |
 | `dust_opacity_fuv` | String | `"Fixed"` | -- |
 | `dust_opacity_euv` | String | `"Fixed"` | -- |
 | `dust_euvopac_value` | Real | `1.25e3` | Opacities in the bands if Fixed option is chosen. EUV opacity assumes pure hydrogen mixture; divide by eos_singlespeciesA These values are motivated by star cluster SED-weighted averages shown in Figure 22, Kim et al. 2023 Bands: FUV, EUV, Photoelectric (PE), Lyman-Werner (LW), Infrared (IR) |

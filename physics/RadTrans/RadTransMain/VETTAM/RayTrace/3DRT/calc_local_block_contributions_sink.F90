@@ -78,6 +78,7 @@ subroutine calc_local_block_contributions_sink( &
   REAL :: ttemp
   REAL, DIMENSION(NDIM) :: b0c, b1c
   real :: length, dtaucell, lcontrib, dlcontrib, sinkpos(NDIM)
+  integer, dimension(NDIM) :: vox
   logical :: printval
   REAL,DIMENSION(NDIM) :: target_point
   !-------------------------------------------------------------------------------
@@ -254,6 +255,15 @@ subroutine calc_local_block_contributions_sink( &
     taud = taud*levelFact/length
   end if
 
+  ! A face node on a block edge can be reached by the ray only at the node itself (it lies on the
+  ! block's silhouette as seen from the source), so tau/length is 0/0. Use its limit, the opacity of
+  ! the adjacent active cell, rather than 0, which would make the interpolation in
+  ! create_cut_block_list_3DRT drop the column of rays clipping the block near that edge.
+  if(face.ne.0 .and. length.le.0.0) then
+    vox = MIN(MAX(FLOOR(x1), b0+1), b1-2)
+    taud = solnData(OPAC_VAR,vox(1)+NGUARD,vox(2)+NGUARD,vox(3)+NGUARD) * rescale_inv(1) * levelFact
+  end if
+
   !Set final returned values
   taud_ = taud
   if(face .eq. 0) then 
@@ -291,8 +301,8 @@ SUBROUTINE onNextVoxelSink(voxel,dir,t,taud,opac,told,dtold,state,cut,length,dta
   if(debug_rt) print *, 'OPAC_VAR of Voxel,',voxel,' = ',solnData(OPAC_VAR,voxel(1)+NGUARD,voxel(2)+NGUARD,voxel(3)+NGUARD)
   if(debug_rt) print *, 'OPAC_VAR of last voxel, resP = ',opac
 
-  !Only add contribution if the starting point has been crossed
-  IF(tbegin.le.told) THEN
+  !Only add contribution if the starting point has been crossed, and not beyond a face destination
+  IF(tbegin.le.told .and. state.ne.2) THEN
     !Catch cases where the first step would be partial, i.e. not = a full voxel step
     !This would almost always be the case, as long as the sink is not directly at the corner
     if(state.eq.0) then
@@ -302,9 +312,10 @@ SUBROUTINE onNextVoxelSink(voxel,dir,t,taud,opac,told,dtold,state,cut,length,dta
     else
       a = 0.0
     end if
-    !Only do this
+    !Face destinations: the step ending at told contains the destination, so keep the part of it
+    !before tend (face nodes lie on voxel boundaries, so this is usually the whole step)
     if(tend.le.told.and.face.ne.0) then
-      b = (told - tend) / dtold
+      b = MAX(a, 1.0 - (told - tend) / dtold)
       state = 2
     else
       b = 1.0

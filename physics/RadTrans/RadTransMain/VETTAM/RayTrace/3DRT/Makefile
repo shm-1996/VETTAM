@@ -9,7 +9,21 @@ RadTrans +=  calc_local_block_contributions_3DRT.o \
 						 RadTrans_RayTrace_3DRT.o \
 						 RadTrans_RayTrace_Diffuse.o \
 						 rt_irradiation.o \
-						 FastVoxelTraversal.o
+						 FastVoxelTraversal.o \
+						 rt_faceComm.o \
+						 rt_checksum.o
+
+rt_checksum.o : Grid_interface.o \
+				Driver_data.o \
+				RadTrans_hybridCharModule.o
+
+rt_faceComm.o : raytrace_data.o \
+				RadTrans_RayTrace_3DRT.o \
+				rt_data_raytrace_3drt.o \
+				RadTrans_TreeCommData.o \
+				RadTrans_hybridCharModule.o \
+				Grid_data.o \
+				Driver_data.o
 
 RadTrans_RayTrace_3DRT.o :	tree.o \
 				Logfile_interface.o \
@@ -42,7 +56,9 @@ RadTrans_RayTrace_Diffuse.o : tree.o \
 				calc_local_block_contrib_face_3DRT.o \
 				create_cut_block_list_3DRT.o \
 				healpix.o \
-				RadTrans_RayTrace_3DRT.o				
+				RadTrans_RayTrace_3DRT.o \
+				rt_faceComm.o \
+				rt_checksum.o
 
 calc_local_block_contributions_3DRT.o :	tree.o \
 					RadTrans_hybridCharModule.o \

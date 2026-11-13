@@ -52,6 +52,8 @@ subroutine rt_raytrace_init()
 #endif
 
   call RuntimeParameters_get("rt_healpix_randomize", rt_healpix_randomize)
+  call RuntimeParameters_get("rt_needOnlyFaces", rt_needOnlyFaces)
+  call RuntimeParameters_get("rt_debugChecksum", rt_debugChecksum)
      !
   
 #ifdef RAYTRACE_3DRT

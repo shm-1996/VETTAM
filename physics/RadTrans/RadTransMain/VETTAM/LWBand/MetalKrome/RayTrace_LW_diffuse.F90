@@ -34,8 +34,10 @@ subroutine RayTrace_LW_diffuse()
   use pt_sinkSort,      ONLY: NewQsort_IN
   use pt_sinkInterface, ONLY: pt_sinkGatherGlobal
   use RadTrans_hybridCharModule
+  use rt_faceComm, ONLY : rt_faceLayout, rt_faceExchange, RT_GEOM_POINT, RT_GEOM_DIR
+  use rt_checksum, ONLY : rt_checksumLog, rt_checksumAdd
   use PhysicalConstants_interface, ONLY : PhysicalConstants_get
-  use RadTrans_data, ONLY: rt_useRadTrans
+  use RadTrans_data, ONLY: rt_useRadTrans, rt_vettamSkipped
 #ifdef CO_SPEC
   use KromeChemistry_data, ONLY: chi_LW_bg, chi_PE_bg
 #endif
@@ -80,8 +82,10 @@ subroutine RayTrace_LW_diffuse()
   real :: ColDens, ColDens_local, ColDens_global, taud
   real :: intensity, intensity_local, intensity_global
   real :: dest(NDIM)
+  ! sink positions / ray directions of the current angle group (face-value need sets)
+  real :: groupGeom(MDIM, nrOfAnglesPerGroup)
   real, parameter :: J_FUV_ISRF = 2.1e-4, J_PE_ISRF = 1.8e-4, J_LW_ISRF = 3.7e-5 ! in ergs cm^-2 s^-1 sr^-1
-  real :: c_light, mH
+  real :: c_light
   !Containers to store the column density of H2 and the dust optical depth, needed for other species
   !Containers would store these for every cell in the block, for every particle -- i.e. shape (nAllParticles, NXB, NYB, NZB)
   real, dimension(:,:,:,:,:), allocatable :: NH2_star, taud_star
@@ -107,7 +111,6 @@ subroutine RayTrace_LW_diffuse()
   if(dr_globalMe.eq.MASTER_PE) call Logfile_stamp("Starting Raytracing for diffuse Lyman Werner contribution", "[RT_SINK] ")
 
   call PhysicalConstants_get("speed of light",c_light)
-  call PhysicalConstants_get("proton mass",mH)
 
 
   ! Get the current resolution on the highest refinement level
@@ -149,17 +152,42 @@ subroutine RayTrace_LW_diffuse()
 
   if(dr_globalMe.eq.MASTER_PE) call Logfile_stamp("Raytracing done for diffuse Lyman Werner contribution", "[RT_SINK] ")
 
+  if(rt_debugChecksum) call checksum_output()
+
   call Timers_stop("rad_raytrace_bg")
 
   CONTAINS
+
+  ! rt_debugChecksum: exact checksum of every field written by this tracer
+  ! (LWFL is only zeroed here, when VETTAM did not run this step)
+  subroutine checksum_output()
+    integer :: vars(7), ncs
+    character(len=4) :: names(7)
+    ncs = 0
+    call rt_checksumAdd(ULWD_VAR,'ULWD',ncs,vars,names)
+    call rt_checksumAdd(UPED_VAR,'UPED',ncs,vars,names)
+#ifdef REIR_VAR
+    call rt_checksumAdd(REIR_VAR,'REIR',ncs,vars,names)
+#endif
+    call rt_checksumAdd(DIH2_VAR,'DIH2',ncs,vars,names)
+#ifdef C_SPEC
+    call rt_checksumAdd(IC_VAR,'IC  ',ncs,vars,names)
+#endif
+#ifdef CO_SPEC
+    call rt_checksumAdd(DICO_VAR,'DICO',ncs,vars,names)
+#endif
+    call rt_checksumAdd(LWFL_VAR,'LWFL',ncs,vars,names)
+    call rt_checksumLog('LW_diffuse', 'background', ncs, vars(1:ncs), names(1:ncs))
+  end subroutine checksum_output
 
   subroutine raytrace_species()
     !This subroutine is used to perform the ray-tracing for each species column density from the boundary
     !Steps: i) Set OPAC_VAR to the appropriate quantity for the species (noDens for column calculations, or kappa for taud)
     !       iii) Compute face contribution, communicate face values, and combine the SC solve using face values with LC solve to get the total column density
 
-    !Reset the containers if not using RadTrans as it would reset it otherwise
-    if(.not. rt_useRadTrans) then
+    !Reset the containers unless VETTAM has reset (and filled) them this step; it does not
+    !when RadTrans is off or when it skipped because there are no sinks (noSink_VETTAM false)
+    if(.not. rt_useRadTrans .or. rt_vettamSkipped) then
       call rad_resetLWContainers()
     end if
 
@@ -179,13 +207,17 @@ subroutine RayTrace_LW_diffuse()
       iAb = iAe+1 ! Start where we stopped 
       iAe = iAngleGroup*nrOfAnglesPerGroup
 
+      do iAngle=iAb,iAe
+        call getAngles(iAngle,rand_angles(1),rand_angles(2),rand_angles(3),theta,phi,dirFact)
+        groupGeom(:,iAngle-iAb+1) = dirFact
+      end do
+      call rt_faceLayout(iAe-iAb+1, RT_GEOM_DIR, groupGeom)
+
       call Timers_start("rad_calc_face_values")
       call rad_facevalues()
       call Timers_stop("rad_calc_face_values")      
 
-      call Timers_start("rad_MPI_ALLGATHER_faceValues")
-      call gather_faces(iAb,iAe)
-      call Timers_stop("rad_MPI_ALLGATHER_faceValues")
+      call rt_faceExchange(iAe-iAb+1)
 
 
       call Timers_start("rad_calcContrib")
@@ -243,8 +275,8 @@ subroutine RayTrace_LW_diffuse()
                   ColDens, intensity, lambda_akku, &
                   n, &
                   .true.,dtaucell,dlcell)
-              faceValueAll(k,j,n,1,b,iAindex,dr_globalMe) = ColDens
-              faceValueAll(k,j,n,2,b,iAindex,dr_globalMe) = intensity
+              faceValueAll(k,j,n,1,faceSlot(b,iAindex,dr_globalMe)) = ColDens
+              faceValueAll(k,j,n,2,faceSlot(b,iAindex,dr_globalMe)) = intensity
             end do ! k
           end do !j
 
@@ -319,15 +351,16 @@ subroutine RayTrace_LW_diffuse()
                     call Driver_abortFlash("Diffuse LW ray-tracing assumes fixed dust opacities for the PE band background field.")
                   end if
                   solnData(UPED_VAR,i,j,k) = solnData(UPED_VAR,i,j,k) + (chi_PE_bg * exp(-ColDens*dust_peopac_value/dust_lwopac_value) &
-                                              * J_LW_ISRF)*dOmega/c_light
+                                              * J_PE_ISRF)*dOmega/c_light
 
 #ifdef REIR_VAR
-                  !Add the dust heating from the background LW field
+                  !Add the dust heating rate per volume from the background LW field: I dOmega kappa rho D2G (erg cm^-3 s^-1)
                   solnData(REIR_VAR,i,j,k) = solnData(REIR_VAR,i,j,k) + (chi_LW_bg * exp(-ColDens) * J_LW_ISRF)*dOmega* &
-                                                    dust_lwopac_value*mH*dusttoGasRatio !in erg s^-1
-                  !Add the dust heating from the background PE field
+                                                    dust_lwopac_value*solnData(DENS_VAR,i,j,k)*dusttoGasRatio
+                  !Add the dust heating rate per volume from the background PE field
                   solnData(REIR_VAR,i,j,k) = solnData(REIR_VAR,i,j,k) + (chi_PE_bg * exp(-ColDens*dust_peopac_value/ &
-                                                dust_lwopac_value) * J_LW_ISRF)*dOmega* dust_peopac_value*mH*dusttoGasRatio !in erg s^-1
+                                                dust_lwopac_value) * J_PE_ISRF)*dOmega* dust_peopac_value* &
+                                                solnData(DENS_VAR,i,j,k)*dusttoGasRatio
                                                     
 #endif
                 endif
@@ -338,18 +371,21 @@ subroutine RayTrace_LW_diffuse()
                   fshield = get_fshield_H2(NH2,bfive)
                   if(useHIShield) fshield = fshield * get_fshield_H(ColDens,bfive)
                   !Use the fshield container to cumulatively add the total unattenuated flux
-                  solnData(DIH2_VAR,i,j,k) = solnData(DIH2_VAR,i,j,k) + diss_rate * fshield
+                  !*_draine are full-sky (4pi) rates in s^-1; weight each ray by its sky fraction dOmega/(4pi)
+                  solnData(DIH2_VAR,i,j,k) = solnData(DIH2_VAR,i,j,k) + diss_rate * fshield * dOmega/(4.0*PI)
                 else if(fsh_spec == "C") then
                   diss_rate = chi_LW_bg * ionC_draine * exp(-taud) !Dust-attenuated dissociation rate
                   !Obtain the shielding due to H2 and C for C
                   fshield = get_fshield_C(NH2, ColDens, bfive)
-                  solnData(IC_VAR,i,j,k) = solnData(IC_VAR,i,j,k) + diss_rate * fshield
+                  !*_draine are full-sky (4pi) rates in s^-1; weight each ray by its sky fraction dOmega/(4pi)
+                  solnData(IC_VAR,i,j,k) = solnData(IC_VAR,i,j,k) + diss_rate * fshield * dOmega/(4.0*PI)
 
                 else if(fsh_spec == "CO") then
                   diss_rate = chi_LW_bg * dissCO_draine * exp(-taud) !Dust-attenuated dissociation rate
                   !Obtain the shielding due to H2 and CO for CO
                   fshield = get_fshield_CO(NH2, ColDens, bfive)
-                  solnData(DICO_VAR,i,j,k) = solnData(DICO_VAR,i,j,k) + diss_rate * fshield
+                  !*_draine are full-sky (4pi) rates in s^-1; weight each ray by its sky fraction dOmega/(4pi)
+                  solnData(DICO_VAR,i,j,k) = solnData(DICO_VAR,i,j,k) + diss_rate * fshield * dOmega/(4.0*PI)
                 endif
             enddo ! i
           enddo !j
@@ -360,49 +396,6 @@ subroutine RayTrace_LW_diffuse()
 
   END SUBROUTINE rad_calcContrib
 
-  SUBROUTINE gather_faces(iAb,iAe)
-    implicit none
-    integer, intent(in) :: iAb,iAe
-    integer :: angles
-    integer, dimension(dr_globalNumProcs) :: displs,recvcounts
-    !
-    !  Gather all face values from all processors and store
-    !  the results in faceValueAll.
-    !
-#ifdef DEBUG_RT
-    write(*,*) 'gathering face-values...'
-#endif
-    angles = iAe-iAb+1
-    IF(angles.eq.nrOfAnglesPerGroup) THEN
-      call MPI_ALLGATHER( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll,&
-           (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup, &
-           FLASH_REAL,&
-           MPI_COMM_WORLD,ierr)
-    ELSE IF(iAe-iAb+1.ge.1) THEN
-      do i=1,dr_globalNumProcs
-        displs(i) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup*(i-1)
-      end do
-      recvcounts(:) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*angles
-
-      call MPI_ALLGATHERV( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll, &
-           recvcounts, &
-           displs, &
-           FLASH_REAL, &
-           MPI_COMM_WORLD,ierr)
-    END IF
-#ifdef DEBUG_RT
-    write(*,*) 'gathering face-values... done'
-#endif
-    !
-  END SUBROUTINE gather_faces
 
   SUBROUTINE SetOPAC_LW(blk)
     use rt_ionisedata, ONLY: h2A, hA
@@ -489,6 +482,10 @@ subroutine RayTrace_LW_diffuse()
       if(fsh_spec == "CO") solnData(DICO_VAR,:,:,:) = 0.0
       if(fsh_spec == "dust") solnData(ULWD_VAR,:,:,:) = 0.0
       if(fsh_spec == "dust") solnData(UPED_VAR,:,:,:) = 0.0
+#ifdef REIR_VAR
+      !The background dust heating is accumulated into REIR below, so reset it too
+      if(fsh_spec == "dust") solnData(REIR_VAR,:,:,:) = 0.0
+#endif
       solnData(LWFL_VAR,:,:,:) = 0.0
       call Grid_releaseBlkPtr(blk, solnData)
 

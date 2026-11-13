@@ -33,6 +33,11 @@ subroutine RayTrace_LW()
   use pt_sinkSort,      ONLY: NewQsort_IN
   use pt_sinkInterface, ONLY: pt_sinkGatherGlobal
   use RadTrans_hybridCharModule
+  use Grid_interface, ONLY : Grid_getMinCellSize
+  use RuntimeParameters_interface, ONLY : RuntimeParameters_get
+  use RadTrans_data, ONLY : rt_useRadTrans, rt_speedlt
+  use rt_faceComm, ONLY : rt_faceLayout, rt_faceExchange, RT_GEOM_POINT, RT_GEOM_DIR
+  use rt_checksum, ONLY : rt_checksumLog, rt_checksumAdd
 
   implicit none
 
@@ -69,10 +74,21 @@ subroutine RayTrace_LW()
   !
   integer             :: idx(NDIM), i, j, k, n, p, q
   real                :: distSqr_sink
+  !Near-sink floor on r^2: the Gaussian width used for JSTR and UVF0 in rt_sinkInject
+  real, save          :: sigma_star
+  real                :: sigma_sink
+  logical, save       :: firstCall = .true.
+  !lwdiss_type = "raytrace" skips the LW moment solve, so this ray-trace also supplies what it would have given the
+  !rest of VETTAM/KROME: E = sum_s F_s/c in ERAD and F = sum_s F_s rhat_s in MOH (for rt_dustTerms: dust heating
+  !via REIR, ULWD, radiation pressure), and the unattenuated stellar LW flux in UVF0 (for KROME's chi0 and Av).
+  !Only when the moment solver runs, which resets UVF0/ULWD/REIR each update.
+  logical             :: fillMoments
   real, dimension(MAXCELLS,NDIM) :: xr
   real :: ColDens, ColDens_local, ColDens_global, taud
   real :: intensity_global
   real :: dest(NDIM)
+  ! sink positions / ray directions of the current angle group (face-value need sets)
+  real :: groupGeom(MDIM, nrOfAnglesPerGroup)
 
   integer, dimension(:), allocatable :: id_sorted, QSindex
   !Containers to store the column density of H2 and the dust optical depth, needed for other species
@@ -93,7 +109,9 @@ subroutine RayTrace_LW()
 
   ! gather all particle positions and luminosities
   !
-#ifdef SINK_PART_TYPE
+  !Sinks without an LW/FUV luminosity property (no stellar evolution model compiled in) emit no LW radiation,
+  !so they are treated like having no sources
+#if defined(SINK_PART_TYPE) && (defined(LUMLW_PART_PROP) || defined(LUMFUV_PART_PROP) || defined(LUMINOSITY_PART_PROP))
   call pt_sinkGatherGlobal()
   nAllParticles = localnpf
 #else
@@ -106,6 +124,30 @@ subroutine RayTrace_LW()
   call Timers_start("rad_raytrace_sink")
 
   if(dr_globalMe.eq.MASTER_PE) call Logfile_stamp("Starting Raytracing for sink Lyman Werner contribution", "[RT_SINK] ")
+
+  if(firstCall) then
+    call RuntimeParameters_get("sigma_star", sigma_star)
+    firstCall = .false.
+  endif
+  call Grid_getMinCellSize(sigma_sink)
+  sigma_sink = sigma_star*sigma_sink
+
+  fillMoments = (lwdiss_type == "raytrace") .and. rt_useRadTrans
+  if(fillMoments) then
+    do b=1, nrOfLeafBlocks
+      blk=leafList(b)
+      call Grid_getBlkPtr(blk, solnData)
+      solnData(ERAD_VAR,:,:,:) = 0.0
+      solnData(MOHX_VAR,:,:,:) = 0.0
+#if NDIM>1
+      solnData(MOHY_VAR,:,:,:) = 0.0
+#if NDIM>2
+      solnData(MOHZ_VAR,:,:,:) = 0.0
+#endif
+#endif
+      call Grid_releaseBlkPtr(blk, solnData)
+    end do
+  endif
 
   ! Initialize Angle Indices
   iAb=0
@@ -183,15 +225,61 @@ subroutine RayTrace_LW()
   !   call calculate_LWFlux()
   ! endif
 
+  !E = sum_s F_s/c for the streaming stellar field (LWFL now holds the dust-attenuated flux summed over sinks)
+  if(fillMoments) then
+    do b=1, nrOfLeafBlocks
+      blk=leafList(b)
+      call Grid_getBlkPtr(blk, solnData)
+      solnData(ERAD_VAR,:,:,:) = solnData(LWFL_VAR,:,:,:)/rt_speedlt
+      call Grid_releaseBlkPtr(blk, solnData)
+    end do
+  endif
+
   deallocate(id_sorted,QSindex)
   deallocate(NH2_star, taud_star)
     
 
   if(dr_globalMe.eq.MASTER_PE) call Logfile_stamp("Raytracing for Lyman Werner Radiation completed", "[RT_SINK] ")
 
+  if(rt_debugChecksum) call checksum_output()
+
   call Timers_stop("rad_raytrace_sink")
 
   CONTAINS
+
+  ! rt_debugChecksum: exact checksum of every field written by this tracer
+  subroutine checksum_output()
+    integer :: vars(10), ncs
+    character(len=4) :: names(10)
+    character(len=32) :: ident
+    ncs = 0
+    call rt_checksumAdd(LWFL_VAR,'LWFL',ncs,vars,names)
+    call rt_checksumAdd(FSHM_VAR,'FSHM',ncs,vars,names)
+    if(useHIshield) call rt_checksumAdd(FSHA_VAR,'FSHA',ncs,vars,names)
+#ifdef C_SPEC
+    call rt_checksumAdd(IC_VAR,'IC  ',ncs,vars,names)
+#endif
+#ifdef CO_SPEC
+    call rt_checksumAdd(DICO_VAR,'DICO',ncs,vars,names)
+#endif
+    ! lwdiss_type = "raytrace": this tracer also fills the LW moments
+    if(fillMoments) then
+      call rt_checksumAdd(ERAD_VAR,'ERAD',ncs,vars,names)
+      call rt_checksumAdd(MOHX_VAR,'MOHX',ncs,vars,names)
+#if NDIM>1
+      call rt_checksumAdd(MOHY_VAR,'MOHY',ncs,vars,names)
+#endif
+#if NDIM>2
+      call rt_checksumAdd(MOHZ_VAR,'MOHZ',ncs,vars,names)
+#endif
+#ifdef UVF0_VAR
+      call rt_checksumAdd(UVF0_VAR,'UVF0',ncs,vars,names)
+#endif
+    endif
+    write(ident,'(a,i0,a,i0)') 'nsinks=', nAllParticles, ' groups=', &
+         CEILING(nAllParticles/REAL(nrOfAnglesPerGroup))
+    call rt_checksumLog('LW_sink', ident, ncs, vars(1:ncs), names(1:ncs))
+  end subroutine checksum_output
 
   subroutine raytrace_species()
     !This subroutine is used to perform the ray-tracing for each species column density
@@ -213,13 +301,16 @@ subroutine RayTrace_LW()
       iAb = (iAngleGroup-1)*nrOfAnglesPerGroup + 1
       iAe = MIN(iAngleGroup*nrOfAnglesPerGroup,nAllParticles)
 
+      do iAngle=iAb,iAe
+        groupGeom(:,iAngle-iAb+1) = particles_global(POSX_PART_PROP:POSZ_PART_PROP,QSindex(iAngle))
+      end do
+      call rt_faceLayout(iAe-iAb+1, RT_GEOM_POINT, groupGeom)
+
       call Timers_start("rad_calc_face_values")
       call rad_facevalues()
       call Timers_stop("rad_calc_face_values")
 
-      call Timers_start("rad_MPI_ALLGATHER_faceValues")
-      call gather_faces(iAb,iAe)
-      call Timers_stop("rad_MPI_ALLGATHER_faceValues")
+      call rt_faceExchange(iAe-iAb+1)
 
       call Timers_start("rad_calcContrib")
       call rad_calcContrib()
@@ -273,7 +364,7 @@ subroutine RayTrace_LW()
                         regFact, blk, PointSource, dest, dirFact, maxLevel, ColDens, &
                         n,dColDens,dlcell,.false.)
               end if
-              faceValueAll(k,j,n,1,b,iAindex,dr_globalMe) = ColDens
+              faceValueAll(k,j,n,1,faceSlot(b,iAindex,dr_globalMe)) = ColDens
             end do ! k
           end do !j
 
@@ -294,7 +385,7 @@ subroutine RayTrace_LW()
                         regFact, blk, PointSource, dest, dirFact, maxLevel, ColDens, &
                         n,dColDens,dlcell,.false.)
               end if
-              faceValueAll(k,j,n,2,b,iAindex,dr_globalMe) = ColDens
+              faceValueAll(k,j,n,2,faceSlot(b,iAindex,dr_globalMe)) = ColDens
             end do ! k
           end do !j
 
@@ -334,14 +425,20 @@ subroutine RayTrace_LW()
                 distSqr_sink = MAX(SUM((dest-PointSource)**2),(0.5/regFact(1))**2)
 
                 !Prevent any radiation within the radius of the star
+#ifdef STELLAR_RADIUS_PART_PROP
                 radius_sink = particles_global(STELLAR_RADIUS_PART_PROP,QSindex(iAngle))
+#else
+                radius_sink = 0.0
+#endif
                 if (distSqr_sink .ge. radius_sink**2) then
 #ifdef LUMLW_PART_PROP
                     luminosity = particles_global(LUMLW_PART_PROP,QSindex(iAngle))
 #elif LUMFUV_PART_PROP
                     luminosity = particles_global(LUMFUV_PART_PROP,QSindex(iAngle))
-#else
+#elif defined(LUMINOSITY_PART_PROP)
                     luminosity = particles_global(LUMINOSITY_PART_PROP,QSindex(iAngle))
+#else
+                    luminosity = 0.0
 #endif
                 
                     !Unattenuated radiation flux
@@ -411,6 +508,16 @@ subroutine RayTrace_LW()
 
                 ! Now add up global and local column densities
                 ColDens = ColDens_global + ColDens_local
+                !calc_local_block_contributions_sink returns the column to the destination cell's entry face
+                !(photon-conserving convention); dColDens is the destination cell's own segment. The LW rates
+                !and shielding factors are for the cell, so evaluate both at its centre: dust and species columns
+                !alike (at the entry face the flux is ~2x too high for tau_cell ~ 1).
+                !In the sink's own cell the segment starts at the sink, so take the sink-to-centre part of it.
+                if(dlcell > 0.0 .and. all(abs(dest-PointSource) .le. 0.5*del)) then
+                  ColDens = ColDens + dColDens*min(1.0, sqrt(sum((dest-PointSource)**2))/dlcell)
+                else
+                  ColDens = ColDens + 0.5*dColDens
+                endif
 
                 if(fsh_spec == "dust") then
                   !For dust, no shielding factor calculation. Just store the optical depth for later use. 
@@ -430,23 +537,25 @@ subroutine RayTrace_LW()
                   NH2 = NH2_star(b,i-ib(1),j-ib(2),k-ib(3),QSindex(iAngle))
                 endif
 
-                ! Now add up global and local column densities.
-                !-------------------------------------
-                ! Take the maximum to limit the distance to bigger distances then 1./2 of a cell
-                ! This is approximately the average, if we calculate the distance between any point
-                ! in the cell and the star particle.
-
-                distSqr_sink = MAX(SUM((dest-PointSource)**2),(0.5/regFact(1))**2)
+                !Floor r^2 at sigma_sink^2 (geometric dilution only; the columns above are the
+                !actual path), as for JSTR and UVF0 in rt_sinkInject, so LWFL = UVF0_LW*exp(-taud).
+                distSqr_sink = MAX(SUM((dest-PointSource)**2),sigma_sink**2)
 
                 !Prevent any radiation within the radius of the star
+#ifdef STELLAR_RADIUS_PART_PROP
                 radius_sink = particles_global(STELLAR_RADIUS_PART_PROP,QSindex(iAngle))
+#else
+                radius_sink = 0.0
+#endif
                 if (distSqr_sink .ge. radius_sink**2) then
 #ifdef LUMLW_PART_PROP
                     luminosity = particles_global(LUMLW_PART_PROP,QSindex(iAngle))
 #elif LUMFUV_PART_PROP
                     luminosity = particles_global(LUMFUV_PART_PROP,QSindex(iAngle))
-#else
+#elif defined(LUMINOSITY_PART_PROP)
                     luminosity = particles_global(LUMINOSITY_PART_PROP,QSindex(iAngle))
+#else
+                    luminosity = 0.0
 #endif
                 
                     !Unattenuated radiation flux
@@ -458,8 +567,25 @@ subroutine RayTrace_LW()
                 end if
 
 
+#ifdef UVF0_VAR
+                !Unattenuated stellar LW flux for chi0 (the PE part comes from rt_sinkInject); same floor and
+                !stellar-radius cut as LWFL, so its ratio to LWFL is exactly exp(-taud)
+                if(fillMoments .and. fsh_spec == "H2") solnData(UVF0_VAR,i,j,k) = solnData(UVF0_VAR,i,j,k) + flux
+#endif
+
                 !Attenuate flux due to dust absorption
                 flux = flux * exp(-taud)
+
+                !Flux vector of the streaming stellar field, for the radiation pressure in rt_dustTerms
+                if(fillMoments .and. fsh_spec == "H2") then
+                  solnData(MOHX_VAR,i,j,k) = solnData(MOHX_VAR,i,j,k) + flux*dirFact(1)
+#if NDIM>1
+                  solnData(MOHY_VAR,i,j,k) = solnData(MOHY_VAR,i,j,k) + flux*dirFact(2)
+#if NDIM>2
+                  solnData(MOHZ_VAR,i,j,k) = solnData(MOHZ_VAR,i,j,k) + flux*dirFact(3)
+#endif
+#endif
+                endif
 
                 !Get the shielding factor for the obtained column density
                 if(fsh_spec == "H2") then
@@ -494,50 +620,19 @@ subroutine RayTrace_LW()
 
   END SUBROUTINE rad_calcContrib
 
-  subroutine gather_faces(iAb,iAe)
-    integer, intent(in) :: iAb,iAe
-    integer :: angles
-    integer, dimension(dr_globalNumProcs) :: displs,recvcounts
-    !
-    !  Gather all face values from all processors and store
-    !  the results in faceValueAll.
-    !
-    angles = iAe-iAb+1
-    IF(angles.eq.nrOfAnglesPerGroup) THEN
-      call MPI_ALLGATHER( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll,&
-           (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup, &
-           FLASH_REAL,&
-           MPI_COMM_WORLD,ierr)
-    ELSE IF(iAe-iAb+1.ge.1) THEN
-      do i=1,dr_globalNumProcs
-        displs(i) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup*(i-1)
-      end do
-      recvcounts(:) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*angles
-
-      call MPI_ALLGATHERV( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll, &
-           recvcounts, &
-           displs, &
-           FLASH_REAL, &
-           MPI_COMM_WORLD,ierr)
-    END IF
-    !
-  END SUBROUTINE gather_faces
 
   SUBROUTINE SetOPAC_LW(blk)
     use rt_ionisedata, ONLY: h2A, hA
+    use Opacity_data, ONLY: dust_lwopac_value, dust_opacity_fuv, dusttoGasRatio
     IMPLICIT NONE
     integer, intent(in) :: blk
     real :: nH2, nH, nC, nCO
     integer :: i,j,k
     real, dimension(NDIM) :: position, sink_pos
+
+    if(fsh_spec == "dust" .and. lwdiss_type == "raytrace" .and. dust_opacity_fuv .ne. 'Fixed') then
+      call Driver_abortFlash("lwdiss_type = raytrace currently only supports dust_opacity_fuv = Fixed.")
+    endif
 
     call Grid_getBlkPtr(blk, solnData)
     do k=GRID_KLO_GC,GRID_KHI_GC
@@ -583,8 +678,19 @@ subroutine RayTrace_LW()
               solnData(OPAC_VAR,i,j,k) = nCO
 
             else if(fsh_spec == "dust") then
-              !Obtain the dust opacity per unit length; this has already been set for the LW band in Cool.F90
-              solnData(OPAC_VAR,i,j,k) = solnData(TAUP_VAR,i,j,k)
+              if(lwdiss_type == "raytrace") then
+                !TAUP_VAR can't be used here: RadTrans skips rt_setOpacity for the LW band in this mode, so it holds the
+                !previous band's opacity (e.g. EUV dust + HI photoionization). Recompute the LW dust opacity as rt_setOpacity does.
+                solnData(OPAC_VAR,i,j,k) = max(dust_lwopac_value * dusttoGasRatio * solnData(DENS_VAR,i,j,k), &
+                                               1.e-10 * solnData(DENS_VAR,i,j,k))
+#ifdef TEMP_VAR
+                !Thermal sputtering of dust
+                if(solnData(TEMP_VAR,i,j,k) .gt. 1.e6) solnData(OPAC_VAR,i,j,k) = 1.e-10 * solnData(DENS_VAR,i,j,k)
+#endif
+              else
+                !hybrid: called after the LW moment solve, so TAUP_VAR holds the LW-band dust opacity
+                solnData(OPAC_VAR,i,j,k) = solnData(TAUP_VAR,i,j,k)
+              endif
             endif
 
             

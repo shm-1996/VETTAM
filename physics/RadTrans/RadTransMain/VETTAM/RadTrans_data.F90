@@ -46,8 +46,20 @@ module RadTrans_data
   ! Runtime parameters
   logical, save :: rt_useRadTrans, rt_compute_Dt, rt_update_hydro,rt_debug, &
                   use_hlle_correction, rt_sink_implicit, rt_picard_correction, &
-                  rt_sinkheat, rt_sinkmom, rt_ovcterms, noSink_VETTAM
+                  rt_sinkheat, rt_sinkmom, rt_ovcterms, noSink_VETTAM, rt_nonthermal_sputter
+  !P_rad/P_gas threshold for non-thermal sputtering of grains
+  real, save    :: rt_sputter_pratio
   integer, save :: rt_Dt_type, rt_hydro_type, rt_temp_type
+  !True when the latest RadTrans call returned before doing anything (RadTrans off, or
+  !no sinks with noSink_VETTAM false): VETTAM then neither prepared the ray-tracer nor
+  !reset the radiation containers, so the diffuse LW ray-tracer must do both itself.
+  !Not set by the rt_useeverydt sub-cycling skip, where VETTAM's last values are kept.
+  logical, save :: rt_vettamSkipped = .true.
+  !True when the latest RadTrans call skipped because of rt_useeverydt sub-cycling. The radiation
+  !containers then still hold last update's values, including any background KROME added to them
+  !(DIH2/IC/DICO, and in bg_shield_type = "raytrace" also ULWD/UPED/REIR), so the background must
+  !not be added again.
+  logical, save :: rt_vettamSubcycled = .false.
   !c_v = rt_cv_alpha*T^3, for the closed-form update of rt_temp_type=5
   real, save    :: rt_cv_alpha
 

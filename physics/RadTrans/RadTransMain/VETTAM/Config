@@ -107,6 +107,12 @@ PARAMETER rt_picard_correction    BOOLEAN     TRUE
 D O(v/c) correction terms flag
 PARAMETER rt_ovcterms    BOOLEAN     TRUE
 
+D rt_nonthermal_sputter Omit the dust radiation force where grains are destroyed by non-thermal sputtering, i.e. where P_rad/P_gas > rt_sputter_pratio (Kim et al. 2023, App. D)
+PARAMETER rt_nonthermal_sputter    BOOLEAN     TRUE
+
+D rt_sputter_pratio P_rad/P_gas above which grains are sputtered; s^2 at the drift velocity of ~100 km/s
+PARAMETER rt_sputter_pratio    REAL     50.0
+
 D Flag whether to use VETTAM when there are no sink particles
 PARAMETER noSink_VETTAM    BOOLEAN      TRUE
 
@@ -200,5 +206,5 @@ VARIABLE zzed
 D Source term for sink radiation
 VARIABLE jstr
 
-D Reprocessed radiation to IR from higher energy radiation
+D Rate per volume at which dust absorbs radiation in bands bluer than the IR, re-emitted in the IR (erg cm^-3 s^-1)
 VARIABLE reir

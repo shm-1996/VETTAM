@@ -41,7 +41,22 @@ module raytrace_data
   ! as initialize it again.
   INTEGER, save :: allocGeneration
 
-  real, dimension(:,:,:,:,:,:,:), ALLOCATABLE :: faceValueAll
+  ! rt_needOnlyFaces = .true. : every rank stores its own face values plus only
+  ! the remote face values its rays will read (see 3DRT/rt_faceComm.F90).
+  ! rt_needOnlyFaces = .false.: legacy behaviour, full MPI_ALLGATHER of all faces.
+  logical, save :: rt_needOnlyFaces = .true.
+
+  ! rt_debugChecksum = .true.: log an exact checksum of the output fields at the end of
+  ! every ray-tracer call (3DRT/rt_checksum.F90)
+  logical, save :: rt_debugChecksum = .false.
+
+  ! Face values (tau per length / source fn, or column densities for sink rays).
+  ! faceValueAll(ib(1):ie(1), ib(2):ie(2), face(3), var(2), slot)
+  ! The slot of (leaf index, angle index in group, proc) is faceSlot(leaf, iAindex, proc);
+  ! 0 means "not stored on this rank". In legacy mode the slot layout is identical to the
+  ! old 7-D array faceValueAll(...,maxNrOfLeafBlocks,nrOfAnglesPerGroup,0:nProcs-1).
+  real, dimension(:,:,:,:,:), ALLOCATABLE :: faceValueAll
+  integer, dimension(:,:,:), ALLOCATABLE    :: faceSlot
   integer, dimension(:), ALLOCATABLE        :: nrOfLeafBlocksList
   integer, dimension(:,:), ALLOCATABLE      :: leafListAll
 

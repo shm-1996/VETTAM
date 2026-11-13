@@ -93,7 +93,7 @@ function get_fshield_CO(NH2,NCO,bfive)
 
   x = (/ 0d0, 13d0, 14d0, 15d0, 16d0, 17d0, 18d0, 19d0 /) !N_CO
   y = (/ 0d0, 19d0, 20d0, 21d0, 22d0, 23d0 /) !N_H2
-  z(:, 1) = (/ 1d0, 8.080d-1, 5.250d-1, 2.434d-1, 5.467d-2, 1.362d-2, 3.378d-3, 5.240d-5 /)
+  z(:, 1) = (/ 1d0, 8.080d-1, 5.250d-1, 2.434d-1, 5.467d-2, 1.362d-2, 3.378d-3, 5.240d-4 /)
   z(:, 2) = (/ 8.176d-1, 6.347d-1, 3.891d-1, 1.787d-1, 4.297d-2, 1.152d-2, 2.922d-3, 4.662d-4 /)
   z(:, 3) = (/ 7.223d-1, 5.624d-1, 3.434d-1, 1.540d-1, 3.515d-2, 9.231d-3, 2.388d-3, 3.899d-4 /)
   z(:, 4) = (/ 3.260d-1, 2.810d-1, 1.953d-1, 8.726d-2, 1.907d-2, 4.768d-3, 1.150d-3, 1.941d-4 /)
@@ -106,6 +106,40 @@ function get_fshield_CO(NH2,NCO,bfive)
   get_fshield_CO = 1d1**interpolate2DCO(x, y, log10(z), clipped_x, clipped_y)
   return
 end function get_fshield_CO
+
+function get_shield_length_gradient(dens, grad_rho, dx_min, lmax)
+!
+! Returns the local (Sobolev-like) shielding length L = rho/|grad rho| (Gnedin et al. 2009),
+! floored at half the cell size (the cell's own half-column) and capped at lmax
+! (also used when grad_rho = 0, e.g. in a uniform medium)
+  implicit none
+  real, intent(in) :: dens, grad_rho, dx_min, lmax
+  real :: get_shield_length_gradient
+
+  if(grad_rho .gt. 0.0) then
+    get_shield_length_gradient = min(dens/grad_rho, lmax)
+  else
+    get_shield_length_gradient = lmax
+  end if
+  get_shield_length_gradient = max(get_shield_length_gradient, 0.5*dx_min)
+  return
+end function get_shield_length_gradient
+
+subroutine get_local_fshield(nH2, nH, nC, nCO, lshield, bfive, fsh_H2, fsh_H, fsh_C, fsh_CO)
+!
+! Returns the line-shielding factors of H2 (self), H (on H2), C and CO for local column densities N = n * lshield
+  implicit none
+  real, intent(in)  :: nH2, nH, nC, nCO, lshield, bfive
+  real, intent(out) :: fsh_H2, fsh_H, fsh_C, fsh_CO
+  real :: NH2_col
+
+  NH2_col = nH2 * lshield
+  fsh_H2 = get_fshield_H2(NH2_col, bfive)
+  fsh_H  = get_fshield_H(nH * lshield, bfive)
+  fsh_C  = get_fshield_C(NH2_col, nC * lshield, bfive)
+  fsh_CO = get_fshield_CO(NH2_col, nCO * lshield, bfive)
+  return
+end subroutine get_local_fshield
 
 function get_Epump(T, nH2, nH)
 !

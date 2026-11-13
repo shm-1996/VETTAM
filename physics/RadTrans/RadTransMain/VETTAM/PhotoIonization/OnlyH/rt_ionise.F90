@@ -234,7 +234,7 @@ SUBROUTINE rt_ionise(blockCount_,blockList_,dt,time)
       if(hy_useHydro) then 
         call rt_ionMomentum(blockCount_,blockList_,dt_substep,time)
 #ifdef REIR_VAR
-        if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt_substep,time)
+        if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt_substep/dt,time)
 #endif
       endif
 #ifdef H2_SPEC
@@ -257,7 +257,7 @@ SUBROUTINE rt_ionise(blockCount_,blockList_,dt,time)
       if(hy_useHydro) then 
         call rt_ionMomentum(blockCount_,blockList_,dt_substep,time)
 #ifdef REIR_VAR
-        if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt_substep,time)
+        if(dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt_substep/dt,time)
 #endif
       endif
       !Reset current band to above; this is important as some calls below need this
@@ -300,7 +300,7 @@ SUBROUTINE rt_ionise(blockCount_,blockList_,dt,time)
       if(.not. multiple_ionbands) call rt_ionMomentum(blockCount_,blockList_,dt_substep,time)
       !Same as above for reprocessed energy to the IR by dust
 #ifdef REIR_VAR
-      if(.not. multiple_ionbands .and. dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt_substep,time)
+      if(.not. multiple_ionbands .and. dusttoGasRatio .gt. 0) call rt_ionDustRep(blockCount_,blockList_,dt_substep/dt,time)
 #endif
     endif
 

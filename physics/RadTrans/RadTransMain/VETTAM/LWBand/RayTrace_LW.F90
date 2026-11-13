@@ -39,6 +39,9 @@ subroutine RayTrace_LW()
   use pt_sinkSort,      ONLY: NewQsort_IN
   use pt_sinkInterface, ONLY: pt_sinkGatherGlobal
   use RadTrans_hybridCharModule
+  use Grid_interface, ONLY : Grid_getMinCellSize
+  use RuntimeParameters_interface, ONLY : RuntimeParameters_get
+  use rt_faceComm, ONLY : rt_faceLayout, rt_faceExchange, RT_GEOM_POINT, RT_GEOM_DIR
 
   implicit none
 
@@ -72,10 +75,16 @@ subroutine RayTrace_LW()
   !
   integer             :: idx(NDIM), i, j, k, n, p, q
   real                :: distSqr_sink
+  !Near-sink floor on r^2: the Gaussian width used for JSTR and UVF0 in rt_sinkInject
+  real, save          :: sigma_star
+  real                :: sigma_sink
+  logical, save       :: firstCall = .true.
   real, dimension(MAXCELLS,NDIM) :: xr
   real :: ColDens, ColDens_local, ColDens_global
   real :: intensity_global
   real :: dest(NDIM)
+  ! sink positions / ray directions of the current angle group (face-value need sets)
+  real :: groupGeom(MDIM, nrOfAnglesPerGroup)
 
   integer, dimension(:), allocatable :: id_sorted, QSindex
   ! Particle stuff
@@ -106,6 +115,13 @@ subroutine RayTrace_LW()
   call Timers_start("rad_raytrace_sink")
 
   if(dr_globalMe.eq.MASTER_PE) call Logfile_stamp("Starting Raytracing for sink Lyman Werner contribution", "[RT_SINK] ")
+
+  if(firstCall) then
+    call RuntimeParameters_get("sigma_star", sigma_star)
+    firstCall = .false.
+  endif
+  call Grid_getMinCellSize(sigma_sink)
+  sigma_sink = sigma_star*sigma_sink
 
   ! Initialize Angle Indices
   iAb=0
@@ -142,13 +158,16 @@ subroutine RayTrace_LW()
     iAb = (iAngleGroup-1)*nrOfAnglesPerGroup + 1
     iAe = MIN(iAngleGroup*nrOfAnglesPerGroup,nAllParticles)
 
+    do iAngle=iAb,iAe
+      groupGeom(:,iAngle-iAb+1) = particles_global(POSX_PART_PROP:POSZ_PART_PROP,QSindex(iAngle))
+    end do
+    call rt_faceLayout(iAe-iAb+1, RT_GEOM_POINT, groupGeom)
+
     call Timers_start("rad_calc_face_values")
     call rad_facevalues()
     call Timers_stop("rad_calc_face_values")
 
-    call Timers_start("rad_MPI_ALLGATHER_faceValues")
-    call gather_faces(iAb,iAe)
-    call Timers_stop("rad_MPI_ALLGATHER_faceValues")
+    call rt_faceExchange(iAe-iAb+1)
 
     call Timers_start("rad_calcContrib")
     call rad_calcContrib()
@@ -177,13 +196,16 @@ subroutine RayTrace_LW()
       iAb = (iAngleGroup-1)*nrOfAnglesPerGroup + 1
       iAe = MIN(iAngleGroup*nrOfAnglesPerGroup,nAllParticles)
 
+      do iAngle=iAb,iAe
+        groupGeom(:,iAngle-iAb+1) = particles_global(POSX_PART_PROP:POSZ_PART_PROP,QSindex(iAngle))
+      end do
+      call rt_faceLayout(iAe-iAb+1, RT_GEOM_POINT, groupGeom)
+
       call Timers_start("rad_calc_face_values")
       call rad_facevalues()
       call Timers_stop("rad_calc_face_values")
 
-      call Timers_start("rad_MPI_ALLGATHER_faceValues")
-      call gather_faces(iAb,iAe)
-      call Timers_stop("rad_MPI_ALLGATHER_faceValues")
+      call rt_faceExchange(iAe-iAb+1)
 
       call Timers_start("rad_calcContrib")
       call rad_calcContrib()
@@ -256,7 +278,7 @@ subroutine RayTrace_LW()
                         regFact, blk, PointSource, dest, dirFact, maxLevel, ColDens, &
                         n,dColDens,dlcell,.false.)
               end if
-              faceValueAll(k,j,n,1,b,iAindex,dr_globalMe) = ColDens
+              faceValueAll(k,j,n,1,faceSlot(b,iAindex,dr_globalMe)) = ColDens
             end do ! k
           end do !j
 
@@ -277,7 +299,7 @@ subroutine RayTrace_LW()
                         regFact, blk, PointSource, dest, dirFact, maxLevel, ColDens, &
                         n,dColDens,dlcell,.false.)
               end if
-              faceValueAll(k,j,n,2,b,iAindex,dr_globalMe) = ColDens
+              faceValueAll(k,j,n,2,faceSlot(b,iAindex,dr_globalMe)) = ColDens
             end do ! k
           end do !j
 
@@ -314,7 +336,8 @@ subroutine RayTrace_LW()
                 dirFact = dest-PointSource
                 dirFact = dirFact/SQRT(SUM(dirFact**2))
 
-                distSqr_sink = MAX(SUM((dest-PointSource)**2),(0.5/regFact(1))**2)
+                !Floor r^2 at sigma_sink^2, as for JSTR and UVF0 in rt_sinkInject
+                distSqr_sink = MAX(SUM((dest-PointSource)**2),sigma_sink**2)
 
                 !Prevent any radiation within the radius of the star
                 radius_sink = particles_global(STELLAR_RADIUS_PART_PROP,QSindex(iAngle))
@@ -391,14 +414,19 @@ subroutine RayTrace_LW()
 
                 ! Now add up global and local column densities
                 ColDens = ColDens_global + ColDens_local
+                !calc_local_block_contributions_sink returns the column to the destination cell's entry face
+                !(photon-conserving convention); dColDens is the destination cell's own segment. The shielding
+                !factors are for the cell, so evaluate the columns at its centre.
+                !In the sink's own cell the segment starts at the sink, so take the sink-to-centre part of it.
+                if(dlcell > 0.0 .and. all(abs(dest-PointSource) .le. 0.5*del)) then
+                  ColDens = ColDens + dColDens*min(1.0, sqrt(sum((dest-PointSource)**2))/dlcell)
+                else
+                  ColDens = ColDens + 0.5*dColDens
+                endif
 
-                ! Now add up global and local column densities.
-                !-------------------------------------
-                ! Take the maximum to limit the distance to bigger distances then 1./2 of a cell
-                ! This is approximately the average, if we calculate the distance between any point
-                ! in the cell and the star particle.
-
-                distSqr_sink = MAX(SUM((dest-PointSource)**2),(0.5/regFact(1))**2)
+                !Floor r^2 at sigma_sink^2 (geometric dilution only; the column above is the actual path),
+                !as for JSTR and UVF0 in rt_sinkInject.
+                distSqr_sink = MAX(SUM((dest-PointSource)**2),sigma_sink**2)
 
                 !Prevent any radiation within the radius of the star
                 radius_sink = particles_global(STELLAR_RADIUS_PART_PROP,QSindex(iAngle))
@@ -442,42 +470,6 @@ subroutine RayTrace_LW()
 
   END SUBROUTINE rad_calcContrib
 
-  subroutine gather_faces(iAb,iAe)
-    integer, intent(in) :: iAb,iAe
-    integer :: angles
-    integer, dimension(dr_globalNumProcs) :: displs,recvcounts
-    !
-    !  Gather all face values from all processors and store
-    !  the results in faceValueAll.
-    !
-    angles = iAe-iAb+1
-    IF(angles.eq.nrOfAnglesPerGroup) THEN
-      call MPI_ALLGATHER( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll,&
-           (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup, &
-           FLASH_REAL,&
-           MPI_COMM_WORLD,ierr)
-    ELSE IF(iAe-iAb+1.ge.1) THEN
-      do i=1,dr_globalNumProcs
-        displs(i) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup*(i-1)
-      end do
-      recvcounts(:) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*angles
-
-      call MPI_ALLGATHERV( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll, &
-           recvcounts, &
-           displs, &
-           FLASH_REAL, &
-           MPI_COMM_WORLD,ierr)
-    END IF
-    !
-  END SUBROUTINE gather_faces
 
   SUBROUTINE SetOPAC_LW(blk)
     use rt_ionisedata, ONLY: h2A, hA

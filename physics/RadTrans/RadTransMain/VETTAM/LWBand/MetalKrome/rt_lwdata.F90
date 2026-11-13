@@ -25,6 +25,8 @@ module rt_lwdata
 
   ! Runtime parameters
   real, save    :: bfive, fpump, energyPerDissociation, avgEnergyLW
+  !Cap on the local shielding length for lwdiss_type = "noraytrace"
+  real, save    :: lw_lshield_max
   logical, save :: useH2Dissociate, useHIshield
   character(len=MAX_STRING_LENGTH) :: lwdiss_type
 

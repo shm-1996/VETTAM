@@ -116,13 +116,21 @@ SUBROUTINE rad_allocate(firstAllocation)
   ! the maximum number of leaf blocks of all mpi processes.
   !
 
-     allocatedMemory = &
-       dr_globalNumProcs &
-       + maxNrOfLeafBlocks * dr_globalNumProcs &
-       + (NXB+1)*(NYB+1)*6 * nrOfAnglesPerGroup &
-           * maxNrOfLeafBlocks * (dr_globalNumProcs + 1)
-
-     allocatedMemory = allocatedMemory * 8.d0  ! double precision
+     ! Integer bookkeeping (leaf lists + face slot map), counted as 4 byte
+     allocatedMemory = 4.d0 * ( real(dr_globalNumProcs) &
+       + real(maxNrOfLeafBlocks) * real(dr_globalNumProcs) &
+       + real(maxNrOfLeafBlocks) * real(nrOfAnglesPerGroup) * real(dr_globalNumProcs) )
+     if(rt_needOnlyFaces) then
+        ! Own face values only; the buffer for the remote face values a rank needs
+        ! is sized dynamically per angle group (see rt_faceComm, logged in the RT log).
+        allocatedMemory = allocatedMemory + 8.d0 * &
+          real((NXB+1)*(NYB+1)*6) * real(nrOfAnglesPerGroup) * real(maxNrOfLeafBlocks)
+     else
+        ! Face values of all blocks of all ranks (legacy all-gather)
+        allocatedMemory = allocatedMemory + 8.d0 * &
+          real((NXB+1)*(NYB+1)*6) * real(nrOfAnglesPerGroup) &
+          * real(maxNrOfLeafBlocks) * real(dr_globalNumProcs)
+     endif
 
      if(dr_globalMe.eq.MASTER_PE) then
         if(firstAllocation) then
@@ -137,6 +145,7 @@ SUBROUTINE rad_allocate(firstAllocation)
            write(io,*) '  nrOfFaceValues       :', (NXB+1)*(NYB+1)*6
            write(io,*) '  dr_globalNumProcs    :', dr_globalNumProcs
            write(io,*) '  nrOfAnglesPerGroup   :', nrOfAnglesPerGroup
+           write(io,*) '  rt_needOnlyFaces     :', rt_needOnlyFaces
            write(io,*) ''
         endif
      endif
@@ -145,13 +154,14 @@ SUBROUTINE rad_allocate(firstAllocation)
      endif
 
      !    Get memory:
-     !      - faceValueAll:       Values of local column density at all faces of
-     !                            all blocks on all processors.
+     !      - faceSlot:   (leaf, angle-in-group, proc) -> slot in faceValueAll
      call Timers_start("rad_allocate")
      allocate(nrOfLeafBlocksList(0:dr_globalNumProcs-1),&
               leafListAll(maxNrOfLeafBlocks,0:dr_globalNumProcs-1),&
-              faceValueAll(ib(1):ie(1),ib(2):ie(2),3,2,maxNrOfLeafBlocks,nrOfAnglesPerGroup,0:dr_globalNumProcs-1),&
+              faceSlot(maxNrOfLeafBlocks,nrOfAnglesPerGroup,0:dr_globalNumProcs-1),&
               stat=ierr)
+     faceSlot = 0
+     ! faceValueAll itself is (re)allocated on demand by rt_faceComm:rt_faceLayout
      if(ierr.NE.0) CALL Driver_abortFlash("Could not allocate memory in Radtrans_Raytrace_3DRT.")
      call Timers_stop("rad_allocate")
      !
@@ -354,9 +364,10 @@ SUBROUTINE rad_deallocate()
   endif
 
   call Timers_start("rad_allocate")
+  if(allocated(faceValueAll)) deallocate(faceValueAll)
   deallocate(nrOfLeafBlocksList,&
              leafListAll,&
-             faceValueAll,&
+             faceSlot,&
              SurrBlkSumArray,&
              SurrBlkSumNumNegh,&
              SurrBlkSum,&
@@ -504,11 +515,21 @@ subroutine writeMemoryBanner()
       write(io,*) 'If the code crashed, this is probably the point where to tweak your'
       write(io,*) 'runtime parameters. The most memory consuming fields are the face  '
       write(io,*) 'values for the optical depths and the specific intensities.        '
-      write(io,*) 'The memory Mem (in single precision) that is allocated for these   '
+      write(io,*) 'The memory Mem (in double precision) that is allocated for these   '
       write(io,*) 'fields is computed by as follows'
       write(io,*) ''
+      if(rt_needOnlyFaces) then
+      write(io,*) ' rt_needOnlyFaces = T (only needed remote face values are received):'
       write(io,*) '            Mem = maxNrOfLeafBlocks * nrOfFaceValues * '
-      write(io,*) '                  dr_globalNumProcs * nrOfAnglesPerGroup * 4 byte'
+      write(io,*) '                  nrOfAnglesPerGroup * 8 byte  (own faces)'
+      write(io,*) '                + nNeededRemote * nrOfFaceValues * 8 byte'
+      write(io,*) ' where nNeededRemote (block,angle) pairs is computed per angle group'
+      write(io,*) ' and logged as [faceComm] lines below (REQUIRED MEMORY excludes it).'
+      else
+      write(io,*) ' rt_needOnlyFaces = F (legacy all-gather):'
+      write(io,*) '            Mem = maxNrOfLeafBlocks * nrOfFaceValues * '
+      write(io,*) '                  dr_globalNumProcs * nrOfAnglesPerGroup * 8 byte'
+      endif
       write(io,*) ''
       write(io,*) 'with'
       write(io,*) ''

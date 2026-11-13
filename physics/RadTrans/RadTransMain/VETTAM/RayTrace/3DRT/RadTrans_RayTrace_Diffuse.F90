@@ -35,6 +35,9 @@ subroutine RadTrans_raytrace_Diffuse()
   use RadTrans_data, ONLY: rt_etens
 #endif
   use RadTrans_hybridCharModule
+  use rt_faceComm, ONLY : rt_faceLayout, rt_faceExchange, RT_GEOM_DIR
+  use rt_checksum, ONLY : rt_checksumLog, rt_checksumAdd
+  use RadTrans_data, ONLY : current_band
 
   implicit none
   !
@@ -115,6 +118,9 @@ subroutine RadTrans_raytrace_Diffuse()
   !
 
   real :: dest(NDIM)
+  ! ray directions of the current angle group (for the face-value need sets)
+  real :: groupDirs(MDIM, nrOfAnglesPerGroup)
+  integer :: slot
   !
   !-------------------------------------------------------------------------------
   !  
@@ -187,6 +193,15 @@ subroutine RadTrans_raytrace_Diffuse()
       write(*,*) '------------------------------------------------'
 #endif
 
+      ! Step 0 : Storage layout of the face values for this angle group. With
+      ! rt_needOnlyFaces this computes which remote faces this rank's rays need
+      ! (directions change every call with rt_healpix_randomize, so per group).
+      do iAngle=iAb,iAe
+        call getAngles(iAngle,rand_angles(1),rand_angles(2),rand_angles(3),theta,phi,dirFact)
+        groupDirs(:,iAngle-iAb+1) = dirFact
+      end do
+      call rt_faceLayout(iAe-iAb+1, RT_GEOM_DIR, groupDirs)
+
       ! Step 1 : Find the intensity (diffuse) and optical depth to faces of the block
       ! This would be stored, and used for the block-level solve later below
       call Timers_start("rad_calc_face_values")
@@ -198,9 +213,8 @@ subroutine RadTrans_raytrace_Diffuse()
       endif
 
       ! Step 2:  Gather and communicate the quantities at the faces to all processors
-      call Timers_start("rad_MPI_ALLGATHER_faceValues")
-      call gather_faces(iAb,iAe)
-      call Timers_stop("rad_MPI_ALLGATHER_faceValues")
+      ! (timers rad_MPI_ALLGATHER_faceValues or rad_faceExchange inside)
+      call rt_faceExchange(iAe-iAb+1)
 
 
 #ifdef DEBUG_RT
@@ -283,9 +297,49 @@ subroutine RadTrans_raytrace_Diffuse()
   !
   if(dr_globalMe.eq.MASTER_PE) call Logfile_stamp("Finished Raytracing", "[3DRT] ")
   !
+  if(rt_debugChecksum) call checksum_output()
+  !
   call Timers_stop("rad_raytrace_diffuse")
   
   CONTAINS
+
+  ! rt_debugChecksum: exact checksum of every field written by this tracer
+  SUBROUTINE checksum_output()
+    implicit none
+    integer, parameter :: NCS_MAX = 14
+    integer :: vars(NCS_MAX), ncs
+    character(len=4) :: names(NCS_MAX)
+    ncs = 0
+    call rt_checksumAdd(MEAN_VAR,'MEAN',ncs,vars,names)
+    call rt_checksumAdd(RPXX_VAR,'RPXX',ncs,vars,names)
+#if NDIM>1
+    call rt_checksumAdd(RPXY_VAR,'RPXY',ncs,vars,names)
+    call rt_checksumAdd(RPYY_VAR,'RPYY',ncs,vars,names)
+#if NDIM>2
+    call rt_checksumAdd(RPXZ_VAR,'RPXZ',ncs,vars,names)
+    call rt_checksumAdd(RPYZ_VAR,'RPYZ',ncs,vars,names)
+    call rt_checksumAdd(RPZZ_VAR,'RPZZ',ncs,vars,names)
+#endif
+#endif
+#ifdef LAMB_VAR
+    if(do_lambda) call rt_checksumAdd(LAMB_VAR,'LAMB',ncs,vars,names)
+#endif
+#ifdef XXED_VAR
+    if(rt_etens .eq. "vet") then
+      call rt_checksumAdd(XXED_VAR,'XXED',ncs,vars,names)
+#if NDIM>1
+      call rt_checksumAdd(XYED_VAR,'XYED',ncs,vars,names)
+      call rt_checksumAdd(YYED_VAR,'YYED',ncs,vars,names)
+#if NDIM>2
+      call rt_checksumAdd(XZED_VAR,'XZED',ncs,vars,names)
+      call rt_checksumAdd(YZED_VAR,'YZED',ncs,vars,names)
+      call rt_checksumAdd(ZZED_VAR,'ZZED',ncs,vars,names)
+#endif
+#endif
+    end if
+#endif
+    call rt_checksumLog('Diffuse', 'band='//trim(current_band), ncs, vars(1:ncs), names(1:ncs))
+  END SUBROUTINE checksum_output
 
 !
 ! First: Calculate all face values for the intensity (meaf) and
@@ -311,6 +365,7 @@ subroutine RadTrans_raytrace_Diffuse()
       do iAngle=iAb,iAe
        iAindex = (iAngle-iAb)+1
        call getAngles(iAngle,rand_angles(1),rand_angles(2),rand_angles(3),theta,phi,dirFact)
+       slot = faceSlot(b,iAindex,dr_globalMe)
        do n=1,NDIM
          p = MOD(n,3) + 1
          q = MOD(n+1,3) + 1
@@ -334,8 +389,8 @@ subroutine RadTrans_raytrace_Diffuse()
                   taud, intensity, lambda_akku, &
                   n, &
                   .false.,dtaucell,dlcell)
-             faceValueAll(k,j,n,1,b,iAindex,dr_globalMe) = taud
-             faceValueAll(k,j,n,2,b,iAindex,dr_globalMe) = intensity
+             faceValueAll(k,j,n,1,slot) = taud
+             faceValueAll(k,j,n,2,slot) = intensity
            end do ! k
          end do ! j
        end do ! n
@@ -454,49 +509,6 @@ subroutine RadTrans_raytrace_Diffuse()
 #endif
   end SUBROUTINE rad_calcContrib
 
-  SUBROUTINE gather_faces(iAb,iAe)
-    implicit none
-    integer, intent(in) :: iAb,iAe
-    integer :: angles
-    integer, dimension(dr_globalNumProcs) :: displs,recvcounts
-    !
-    !  Gather all face values from all processors and store
-    !  the results in faceValueAll.
-    !
-#ifdef DEBUG_RT
-    write(*,*) 'gathering face-values...'
-#endif
-    angles = iAe-iAb+1
-    IF(angles.eq.nrOfAnglesPerGroup) THEN
-      call MPI_ALLGATHER( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll,&
-           (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup, &
-           FLASH_REAL,&
-           MPI_COMM_WORLD,ierr)
-    ELSE IF(iAe-iAb+1.ge.1) THEN
-      do i=1,dr_globalNumProcs
-        displs(i) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*nrOfAnglesPerGroup*(i-1)
-      end do
-      recvcounts(:) = (nb(1)+1)*(nb(2)+1)*3*2*maxNrOfLeafBlocks*angles
-
-      call MPI_ALLGATHERV( &
-           MPI_IN_PLACE, &
-           0, &
-           MPI_DATATYPE_NULL, &
-           faceValueAll, &
-           recvcounts, &
-           displs, &
-           FLASH_REAL, &
-           MPI_COMM_WORLD,ierr)
-    END IF
-#ifdef DEBUG_RT
-    write(*,*) 'gathering face-values... done'
-#endif
-    !
-  END SUBROUTINE gather_faces
 
 
 end subroutine RadTrans_Raytrace_Diffuse

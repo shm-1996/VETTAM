@@ -26,6 +26,12 @@
 #include "Flash.h"
 #include "constants.h"
 #include "Multispecies.h"
+
+!Sinks compiled in without any stellar evolution model (no luminosity particle property) emit no radiation
+#if defined(SINK_PART_TYPE) && !defined(EUVRATE_13P6_15P2_PART_PROP) && !defined(LUMEUV_PART_PROP) && \
+    !defined(EUVRATE_PART_PROP) && !defined(LUMINOSITY_PART_PROP)
+#define RT_SINKS_NO_EMISSION
+#endif
 SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
 #ifdef SINK_PART_TYPE
   use Particles_sinkData, ONLY : particles_global, localnp, localnpf
@@ -51,6 +57,9 @@ SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
   real :: lum_sink, radius_cluster, jstr, sigma_sink, sink_pos(NDIM)
   real :: xdist, ydist, zdist, distsqr_point, delx
   integer :: b, blockID, i, j, k, p, istat
+#ifdef UVF0_VAR
+  logical :: uvBand
+#endif
 
   !Ionizing Star Case (e.g.: source/Particles/ParticlesMain/Sink/StellarEvolution/PopIII/)
 #ifdef EUVRATE_13P6_15P2_PART_PROP
@@ -70,7 +79,7 @@ SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
     integer, dimension(gather_nprops), save :: gather_propinds = &
     (/ integer :: EUVRATE_PART_PROP, LUMFUV_PART_PROP /)
   !Star case (e.g.: source/Particles/ParticlesMain/Sink/StellarEvolution)
-#else
+#elif defined(LUMINOSITY_PART_PROP)
   integer, parameter :: gather_nprops = 2
   integer, dimension(gather_nprops), save :: gather_propinds = &
     (/ integer :: STELLAR_RADIUS_PART_PROP, LUMINOSITY_PART_PROP /)
@@ -91,11 +100,18 @@ SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
   endif !firstCall
 
   call Timers_start("sink_gaussian")
+#ifndef RT_SINKS_NO_EMISSION
   !Gather all sink particles even from other procs
   call pt_sinkGatherGlobal(gather_propinds, gather_nprops)
+#endif
 
   !Currently just using minimum cell size globally in domain for dx
   call Grid_getMinCellSize(delx)
+
+#ifdef UVF0_VAR
+  !UVF0 sums the LW and PE bands (reset once per VETTAM update in RadTrans, with ULWD/UPED)
+  uvBand = current_band .eq. 'LW' .or. current_band .eq. 'LYMAN_WERNER' .or. current_band .eq. 'PE'
+#endif
 
   !Reset JSTR_VAR to zero
   do b = 1, blockCount_
@@ -126,7 +142,8 @@ SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
   thermpionH2 = 0.0
 #endif
 
-  !Loop over all sink particles in domain
+#ifndef RT_SINKS_NO_EMISSION
+  !Loop over all sink particles in domain (skipped if sinks carry no luminosity: JSTR etc. stay zero)
   do p = 1, localnpf
     sink_pos = particles_global(POSX_PART_PROP:POSZ_PART_PROP,p)
   !Ionizing Star Case (e.g.: source/Particles/ParticlesMain/Sink/StellarEvolution/PopIII/)
@@ -256,12 +273,20 @@ SUBROUTINE rt_sinkInject(blockCount_, blockList_, dtstep)
             solnData(EIH2_VAR,i,j,k) = solnData(EIH2_VAR,i,j,k) + jstr * thermpionH2
 #endif
 
+#ifdef UVF0_VAR
+            !Unattenuated stellar UV (LW+PE) flux, L/(4 pi r^2), for KROME's chi0 and Av; r is floored at the
+            !Gaussian injection width so the reference field stays finite (and >~ the moment-solve field) near sinks
+            if(uvBand) solnData(UVF0_VAR,i,j,k) = solnData(UVF0_VAR,i,j,k) + &
+                                                  lum_sink/(4.*PI*max(distsqr_point, sigma_sink**2))
+#endif
+
           end do !i
         end do !j
       end do !k
       call Grid_releaseBlkPtr(blockID,solnData)
     end do !b
   enddo !p
+#endif
 
 #ifdef THERMPION_PART_PROP
   !Compute luminosity-weighted mean thermal energy deposited per ionisation

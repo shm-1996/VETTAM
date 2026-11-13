@@ -271,6 +271,7 @@ SUBROUTINE rt_setEddTensor()
             solnData(YYED_VAR,i,j,k) = (y(j)**2)/(r**2)
             solnData(XYED_VAR,i,j,k) = (x(i)*y(j))/(r**2)
 #if NDIM>2
+            solnData(ZZED_VAR,i,j,k) = (z(k)**2)/(r**2)
             solnData(YZED_VAR,i,j,k) = (y(j)*z(k))/(r**2)
             solnData(XZED_VAR,i,j,k) = (x(i)*z(k))/(r**2)
 #endif

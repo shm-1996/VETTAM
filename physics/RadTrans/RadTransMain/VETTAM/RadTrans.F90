@@ -126,6 +126,8 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,pass)
 
   
   !Check if RadTrans is to be used
+  rt_vettamSkipped = .true.
+  rt_vettamSubcycled = .false.
   if (.not. rt_useRadTrans &
 #ifdef RAYTRACE_3DRT
 .and. .not. sink_useRayTrace & 
@@ -139,6 +141,7 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,pass)
     return
   endif
 #endif
+  rt_vettamSkipped = .false.
 
   call Timers_start("RadTrans")
 
@@ -156,6 +159,7 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,pass)
     if(tsinceLastCall .lt. rt_useeverydt .and. .not. rt_forceFirstUpdate) then
       if(dr_globalMe .eq. MASTER_PE) &
         & print *, "Skipping VETTAM since tsinceLastCall", tsinceLastCall, "is less than rt_useeverydt", rt_useeverydt
+      rt_vettamSubcycled = .true.
       call Timers_stop("RadTrans")
       return
     endif
@@ -198,6 +202,11 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,pass)
 
 #ifdef ULWD_VAR
       solnData(ULWD_VAR,:,:,:) = 0.0
+#endif
+
+#ifdef UVF0_VAR
+      !Reset with ULWD/UPED so the unattenuated and attenuated UV fields are always from the same update
+      solnData(UVF0_VAR,:,:,:) = 0.0
 #endif
 
       call Grid_releaseBlkPtr(blockID,solnData)
@@ -316,6 +325,33 @@ SUBROUTINE RadTrans(blockCount_,blockList_,dt,pass)
       !If purely using raytrace for LW band, call rt_lw here since the lines of code below are unnecessary
       if(lwdiss_type .eq. 'raytrace') then
         call rt_lw(blockCount_, blockList_,dt_rad) !This subroutine does the necessary action for the LW band
+#ifdef UVF0_VAR
+        !MetalKrome: the ray-trace has put the stellar LW field in ERAD/MOH (no moment solve in this mode). Add its
+        !dust heating (REIR), ULWD and radiation pressure as for the moment-solved bands; rt_dustTerms needs the
+        !LW-band opacities. (PrimKrome's ray-trace has no dust and does not fill ERAD/MOH, so it is excluded.)
+        if(rt_useRadTrans .and. rt_update_hydro .and. hy_useHydro) then
+          call Timers_start("vet_opacity")
+          call rt_setOpacity()
+          call Timers_stop("vet_opacity")
+          call Timers_start("vet_picard")
+          call rt_dustTerms(dt_rad)
+          gcmask(:) = .false.
+#ifdef TEMP_VAR
+          gcmask(TEMP_VAR) = .true.
+#endif
+          gcmask(VELX_VAR) = .true.
+#if NDIM>1
+          gcmask(VELY_VAR) = .true.
+#if NDIM>2
+          gcmask(VELZ_VAR) = .true.
+#endif
+#endif
+          call Grid_fillGuardCells(CENTER,ALLDIR,masksize=NUNK_VARS,mask=gcmask,makeMaskConsistent = .true.,&
+                                  selectBlockType=LEAF,doLogMask=.NOT.gcMaskLogged,doEos=.true.,eosMode=MODE_DENS_TEMP)
+          gcMaskLogged = .TRUE.
+          call Timers_stop("vet_picard")
+        endif
+#endif
         band_count = band_count -1 !Update for next iteration of do loop
         if(band_count .eq. 0) then
           exit !Exit if all bands completed

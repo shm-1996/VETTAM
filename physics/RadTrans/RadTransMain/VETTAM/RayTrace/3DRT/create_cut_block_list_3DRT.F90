@@ -300,7 +300,7 @@ subroutine onNextVoxel2(voxel,NextVoxel,dir_,t,&
 #ifdef CHECKS_RT
   real, dimension(SIZE(voxel)) :: tmp
 #endif
-  integer :: BlockID, ProcID, PatchID, i
+  integer :: BlockID, ProcID, PatchID, i, slot
   integer, dimension(NDIM) :: idx
   INTEGER, DIMENSION(2), PARAMETER :: vars = (/ OPAC_VAR, SOUR_VAR /)
   !print *,"new voxel: ", voxel
@@ -358,13 +358,30 @@ subroutine onNextVoxel2(voxel,NextVoxel,dir_,t,&
   END IF
 #endif
 
+  ! Slot of this block's face values for the current angle in faceValueAll.
+  ! With rt_needOnlyFaces only the geometrically needed remote blocks are stored;
+  ! a miss means the need set was not a superset of the traversal -> abort (always on).
+  IF(PatchID.LT.1) THEN
+    print *, "BlockID, ProcID: ", BlockID, ProcID
+    call Driver_abortFlash("onNextVoxel2 ERROR: leaf index of neighbour block not found.")
+  END IF
+  slot = faceSlot(PatchID, iAindex, ProcID)
+  IF(slot.LE.0) THEN
+    print *, "faceComm miss: BlockID, PatchID, ProcID, iAindex: ", BlockID, PatchID, ProcID, iAindex
+    print *, "  block bndbox min: ", g_bndbox(1,:,BlockID,ProcID)
+    print *, "  block bndbox max: ", g_bndbox(2,:,BlockID,ProcID)
+    print *, "  ray start (dest): ", x0*rescale+globalDomainMin, " backward dir: ", dirFact, " sink: ", sink
+    call Driver_abortFlash("onNextVoxel2 ERROR: face values of a traversed block are not stored on this rank &
+      &(rt_needOnlyFaces need set incomplete).")
+  END IF
+
   idx = get_blockcoord_int(NextVoxel,BlockID,ProcID)
   if(.not.sink) then
     call interpolate(idx, -block_dir, get_blockcoord_real(ray,BlockID,ProcID), &
-      PatchID, ProcID, vars, res)
+      slot, vars, res)
   else
     call interpolate(idx, -block_dir, get_blockcoord_real(ray,BlockID,ProcID), &
-      PatchID, ProcID, vars(1:1), res(1:1))
+      slot, vars(1:1), res(1:1))
   end if
 
   lastPatchID = PatchID
@@ -602,11 +619,11 @@ end subroutine onNextVoxel2
 #ifndef CHECKS_RT
 PURE &
 #endif
-SUBROUTINE interpolate(voxel, dir, ray_, BlockID, ProcID, vars, res)
+SUBROUTINE interpolate(voxel, dir, ray_, slot, vars, res)
 IMPLICIT NONE
   integer, dimension(NDIM), intent(in) :: voxel, dir
   real, dimension(NDIM), intent(in) :: ray_
-  integer, INTENT(IN) :: BlockID,ProcID
+  integer, INTENT(IN) :: slot
   integer, intent(IN), dimension(:) :: vars
   real, intent(OUT),dimension(SIZE(vars)) :: res
   real, dimension(2,2) :: q
@@ -662,20 +679,20 @@ IMPLICIT NONE
           vox(2) = voxel(3) + NGUARD
           IF(sink) THEN
             v = offset(1)+1
-            q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-            q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-            q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
-            q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
+            q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,slot)
+            q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,slot)
+            q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,slot)
+            q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,slot)
               res(1) = interpolate_bilinear(&
                 q11,q21,q12,q22,&
                 xpos(1,1),xpos(2,1),xpos(1,2),xpos(2,2),&
                 ray(2),ray(3))
           ELSE
             do v = 1,SIZE(vars)
-              q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-              q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-              q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
-              q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
+              q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,slot)
+              q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,slot)
+              q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,slot)
+              q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,slot)
               res(v) = interpolate_bilinear(&
                 q11,q21,q12,q22,&
                 xpos(1,1),xpos(2,1),xpos(1,2),xpos(2,2),&
@@ -689,20 +706,20 @@ IMPLICIT NONE
           vox(2) = voxel(3) + NGUARD
           IF(sink) THEN
             v = offset(2)+1
-            q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-            q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-            q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
-            q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
+            q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,slot)
+            q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,slot)
+            q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,slot)
+            q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,slot)
               res(1) = interpolate_bilinear(&
                 q11,q21,q12,q22,&
                 xpos(1,1),xpos(2,1),xpos(1,2),xpos(2,2),&
                 ray(1),ray(3))
           ELSE
             do v = 1,SIZE(vars)
-              q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-              q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-              q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
-              q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
+              q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,slot)
+              q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,slot)
+              q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,slot)
+              q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,slot)
               res(v) = interpolate_bilinear(&
                 q11,q21,q12,q22,&
                 xpos(1,1),xpos(2,1),xpos(1,2),xpos(2,2),&
@@ -716,20 +733,20 @@ IMPLICIT NONE
           vox(2) = voxel(2) + NGUARD
           IF(sink) THEN
             v = offset(3)+1
-            q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-            q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-            q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
-            q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
+            q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,slot)
+            q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,slot)
+            q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,slot)
+            q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,slot)
             res(1) = interpolate_bilinear(&
               q11,q21,q12,q22,&
               xpos(1,1),xpos(2,1),xpos(1,2),xpos(2,2),&
               ray(1),ray(2))
           ELSE
             do v = 1,SIZE(vars)
-              q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-              q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,BlockID,iAindex,ProcID)
-              q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
-              q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,BlockID,iAindex,ProcID)
+              q11 = faceValueAll(vox(1)    , vox(2)    , facecode,v,slot)
+              q21 = faceValueAll(vox(1) + 1, vox(2)    , facecode,v,slot)
+              q12 = faceValueAll(vox(1)    , vox(2) + 1, facecode,v,slot)
+              q22 = faceValueAll(vox(1) + 1, vox(2) + 1, facecode,v,slot)
               res(v) = interpolate_bilinear(&
                 q11,q21,q12,q22,&
                 xpos(1,1),xpos(2,1),xpos(1,2),xpos(2,2),&
@@ -798,7 +815,7 @@ IMPLICIT NONE
               do m=1,2
                 a = MAX(MIN(vox(1)+jmask(m,n),NXB+NGUARD), NGUARD)
                 b = MAX(MIN(vox(2)+kmask(m,n),NXB+NGUARD), NGUARD)
-                q(m,n) = faceValueAll(a,b,facecode,v,BlockID,iAindex,ProcID)
+                q(m,n) = faceValueAll(a,b,facecode,v,slot)
               end do
             end do
             res(1) = interpolate_bilinear(&
@@ -811,7 +828,7 @@ IMPLICIT NONE
                 do m=1,2
                   a = MAX(MIN(vox(1)+jmask(m,n),NXB+NGUARD), NGUARD)
                   b = MAX(MIN(vox(2)+kmask(m,n),NXB+NGUARD), NGUARD)
-                  q(m,n) = faceValueAll(a,b,facecode,v,BlockID,iAindex,ProcID)
+                  q(m,n) = faceValueAll(a,b,facecode,v,slot)
                 end do
               end do
               res(v) = interpolate_bilinear(&
@@ -842,11 +859,11 @@ IMPLICIT NONE
 !    if(sink) then
 !      vox(1:2) = voxel(1:2) + offset(1:2) + NGUARD
 !      v = offset(1)+1
-!      res(1) = faceValueAll(vox(1),vox(2),facecode,v,BlockID,iAindex,ProcID)
+!      res(1) = faceValueAll(vox(1),vox(2),facecode,v,slot)
 !    else
 !    vox(1:2) = voxel(1:2) + offset(1:2) + NGUARD
 !    do v=1,SIZE(vars)
-!      res(v) = faceValueAll(vox(1),vox(2),facecode,v,BlockID,iAindex,ProcID)
+!      res(v) = faceValueAll(vox(1),vox(2),facecode,v,slot)
 !    end do
 !    end if
 #ifdef CHECKS_RT
