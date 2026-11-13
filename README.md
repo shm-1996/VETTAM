@@ -4,7 +4,7 @@
 multi-frequency radiation-hydrodynamics module coupled to the the FLASH MHD code. $\texttt{VETTAM}$ solves the two-moment radiation
 hydrodynamical equations closed with a non-local Variable Eddington Tensor (VET) obtained with a ray-trace solution. The implementation also offers the option to use the Flux Limited Diffusion (FLD) and Moment-1 ($M_1$) closures instead of the VET. The temporal update for VETTAM utilizes an implicit approach, solved using sparse matrix solvers available with the open-source $\texttt{PETSc}$ library. 
 
-If you use VETTAM, please cite **Menon et al. 2022, MNRAS 512, 401**.
+If you use VETTAM, please cite **Menon et al. 2022, MNRAS 512, 401** and **Buntemeyer et al. 2016, New Astronomy, 43, 49**
 
 ## Repository structure
 
