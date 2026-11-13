@@ -1,4 +1,4 @@
-!!****f* source/physics/materialProperties/Opacity/RadTrans/Semenov
+!!****f* source/physics/materialProperties/Opacity/VETTAM/DustOpacities/Opacity
 !!
 !! NAME
 !!

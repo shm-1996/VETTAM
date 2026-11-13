@@ -1,4 +1,4 @@
-!!****h* source/physics/materialProperties/Opacity/RadTrans/Opacity_interface
+!!****h* source/physics/materialProperties/Opacity/VETTAM/Opacity_interface
 !!
 !! NAME
 !!

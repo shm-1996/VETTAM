@@ -30,7 +30,7 @@ physics/RadTrans/RadTransMain/VETTAM/RayTrace/interpolate_bezier.{f90,h}
 
   Machine-generated with SymPy 1.0 (http://www.sympy.org).
 
-physics/materialProperties/Opacity/RadTrans/DustOpacities/
+physics/materialProperties/Opacity/VETTAM/DustOpacities/
 
   Dust opacity tables and evaluation routines follow
 

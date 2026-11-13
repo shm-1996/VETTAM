@@ -10,7 +10,7 @@
 # ER is the radiation energy and F is the flux. These variables are to be defined in your simulation config directory. 
 
 REQUIRES Driver
-REQUIRES physics/materialProperties/Opacity/RadTrans/DustOpacities
+REQUIRES physics/materialProperties/Opacity/VETTAM/DustOpacities
 CONFLICTS physics/RadTrans/RadTransMain/MGD
 
 LIBRARY PETSC

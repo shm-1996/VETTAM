@@ -38,7 +38,7 @@ if [ ! -d "$TARGET/physics/RadTrans/RadTransMain" ]; then
     exit 1
 fi
 
-UNITS="physics/RadTrans/RadTransMain/VETTAM physics/materialProperties/Opacity/RadTrans"
+UNITS="physics/RadTrans/RadTransMain/VETTAM physics/materialProperties/Opacity/VETTAM"
 
 # The unit test suite is a simulation directory rather than a physics unit, but
 # it sits at its FLASH path here too, so it installs the same way.

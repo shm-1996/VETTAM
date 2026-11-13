@@ -62,7 +62,7 @@ Key parameters from `Config` (defaults in parentheses):
 
 ## Build & Setup
 
-- **Dependencies:** Requires PETSc and FLASH Driver; dust opacity tables via `physics/materialProperties/Opacity/RadTrans/DustOpacities`. Conflicts with legacy MGD radiation module.
+- **Dependencies:** Requires PETSc and FLASH Driver; dust opacity tables via `physics/materialProperties/Opacity/VETTAM/DustOpacities`. Conflicts with legacy MGD radiation module.
 - **Enabling VETTAM:** Include `physics/RadTrans/RadTransMain/VETTAM` in your simulation setup and provide PETSc paths. Define extra band-specific output variables in your simulation `Config` if needed.
 - **Ray tracing flags:** Build with `RAYTRACE_3DRT` for VETs or direct transport. LW dissociation (`FSHM_VAR`) and photoionization (`UEUV_VAR`) may also use ray tracing; ensure matching compile-time flags (`SINK_RT` for sink-raytrace).
 - **Runtime tuning:** Adjust `rt_rtol`/`rt_abstol` for accuracy/speed; inspect per-band convergence via `Print_PETSCConvergence`. Use `rt_dt_maxvel` to lower call frequency when light-speed resolution is unnecessary.

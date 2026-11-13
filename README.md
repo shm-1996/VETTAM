@@ -13,7 +13,7 @@ directories only, laid out exactly as they sit under a FLASH `source/` tree:
 
 ```
 physics/RadTrans/RadTransMain/VETTAM/          #the module
-physics/materialProperties/Opacity/RadTrans/   #dust opacities
+physics/materialProperties/Opacity/VETTAM/     #dust opacities
 Simulation/SimulationMain/unitTest/VETTAM/     #verification test suite
 ```
 The subdirectories include additional functionalities which you should include if your problem requires them:

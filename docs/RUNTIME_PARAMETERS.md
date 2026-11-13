@@ -218,7 +218,7 @@ Defaults shown are the Config defaults; override them in your `flash.par`.
 | --- | --- | --- |
 | `sour` | variable | source function |
 
-## `physics/materialProperties/Opacity/RadTrans/DustOpacities/Config`
+## `physics/materialProperties/Opacity/VETTAM/DustOpacities/Config`
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
