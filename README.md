@@ -28,8 +28,8 @@ for Computational Science (https://flash.rochester.edu/site/flashcode/).
 
 ## Requirements
 
-- FLASH 4.0.1 or a derivative, with $\texttt{PARAMESH}$ AMR functionality (VETTAM reads the `tree`)
-- $\texttt{PETSc}$, built with MPI and Fortran capability. 
+- FLASH versions > 4.0.1, with $\texttt{PARAMESH}$ AMR functionality (VETTAM reads the `tree`)
+- $\texttt{PETSc}$, built with MPI and Fortran capability (preferably the latest version; 3.23.6). 
 - An MPI Fortran compiler
 
 ## Installing
@@ -76,7 +76,7 @@ simulation `Config`. Using the $M_1$ closure with more than one band *requires* 
 
 To include the contribution of radiation field from point sources (such as sink particles), build with the sink unit *and* any
 stellar-evolution sub-unit that sets the luminosities in different bands. The implementation expects the variables `LUMINOSITY_PART_PROP` and
-`STELLAR_RADIUS_PART_PROP`to be set by the sink routines to maintain the modularity of $\texttt{VETTAM}$. 
+`STELLAR_RADIUS_PART_PROP`to be set by the sink routines to maintain the modularity of $\texttt{VETTAM}$. You may have to modify these on your end to support your versions of luminosity variables; see `rt_sinkInject.F90` for how the point source contribution is considered.
 
 ### Optional submodules
 
