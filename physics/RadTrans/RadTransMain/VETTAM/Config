@@ -208,6 +208,3 @@ VARIABLE jstr
 
 D Rate per volume at which dust absorbs radiation in bands bluer than the IR, re-emitted in the IR (erg cm^-3 s^-1)
 VARIABLE reir
-
-# link PETSC options file into object directory
-DATAFILES .petscrc

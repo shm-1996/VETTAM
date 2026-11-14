@@ -1,6 +1,0 @@
-
-# Use LGMRES Krylov solver for more robust convergence than standard restarted GMRES.
--ksp_type lgmres
-
-# Use GASM domain-decomposition preconditioner for more robust and scalable convergence.
--pc_type gasm
