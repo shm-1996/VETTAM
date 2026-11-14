@@ -280,7 +280,7 @@ SUBROUTINE Petsc_step(dt,reason)
 
   call KSPGetIterationNumber(ksp, iterations, ierr)
   call KSPGetConvergedReason(ksp, ksp_reason, ierr)
-  reason = ksp_reason
+  reason = ksp_reason%v
 
 #ifdef VET_DEBUG
   call Logfile_stamp("Matrix operations done.", "[VET_DEBUG] ")
